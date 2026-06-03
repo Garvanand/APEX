@@ -1,0 +1,29 @@
+name: apex_mobile
+description: "APEX - Adaptive Presence & Execution Intelligence Companion App"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # HTTP & WebSocket Client
+  http: ^1.2.0
+  web_socket_channel: ^2.4.5
+  
+  # State Management & Helpers
+  provider: ^6.1.1
+  shared_preferences: ^2.2.2
+  intl: ^0.19.0
+  cupertino_icons: ^1.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
