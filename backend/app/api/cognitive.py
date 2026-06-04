@@ -12,6 +12,7 @@ from app.api.deps import get_current_user
 from app.database.models import User, RawSignal, CognitiveState
 from app.schemas.schemas import SignalIngest, CognitiveStateResponse
 from app.services.groq_service import classify_cognitive_state
+from app.services.orchestrator import AgentOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +155,22 @@ async def websocket_stream(
                     confidence = classification.get("confidence_score", 0.8)
                     contributing = classification.get("contributing_metrics", [])
                     
+                    # Apply state agent hysteresis
+                    state_label = await AgentOrchestrator.apply_state_hysteresis(
+                        user_id=user_id,
+                        proposed_state=state_label,
+                        confidence=confidence,
+                        db=db
+                    )
+                    
+                    # Evaluate Environment Sculptor interventions
+                    interventions = await AgentOrchestrator.evaluate_sculptor_interventions(
+                        user_id=user_id,
+                        current_state=state_label,
+                        active_app=event_payload.get("active_application") or "Desktop",
+                        db=db
+                    )
+                    
                     # 3. Save calculated state
                     cog_state = CognitiveState(
                         user_id=user_id,
@@ -175,6 +192,17 @@ async def websocket_stream(
                             "contributing_metrics": contributing
                         }
                     )
+                    
+                    # 5. Broadcast Sculptor interventions if triggered
+                    if interventions:
+                        await manager.send_system_event(
+                            user_id=user_id,
+                            event_name="ENVIRONMENT_SCULPTOR_INTERVENTION",
+                            payload={
+                                "user_id": str(user_id),
+                                "interventions": interventions
+                            }
+                        )
                     break # Break out of DB generator loop
 
     except WebSocketDisconnect:

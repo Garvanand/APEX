@@ -93,3 +93,82 @@ def mock_classify_cognitive_state(signals: Dict[str, Any]) -> Dict[str, Any]:
         "confidence_score": 0.88,
         "contributing_metrics": ["stable_biometrics", "active_work_context"]
     }
+
+async def classify_chat_message(message_text: str, current_task: str) -> Dict[str, Any]:
+    """
+    Invokes Groq Cloud's llama-3.1-8b-instant to classify and score incoming chat notifications.
+    Returns:
+    {
+        "category": "academic" | "social" | "noise",
+        "relevance_score": float,
+        "summary": str,
+        "should_override": bool
+    }
+    """
+    system_prompt = (
+        "You are the APEX Peer Radar message analyst. Your task is to process incoming chat notifications "
+        "and classify them into one of: 'academic', 'social', or 'noise'. You must compute a relevance score "
+        "relative to the user's current task description. "
+        "If a message is academic and highly relevant, or contains critical academic warnings, determine if "
+        "it should override Focus DND rules.\n\n"
+        "Respond ONLY with a JSON object containing keys:\n"
+        "- 'category': 'academic' | 'social' | 'noise'\n"
+        "- 'relevance_score': float between 0.0 and 1.0\n"
+        "- 'summary': brief 1-sentence summary\n"
+        "- 'should_override': boolean (true if highly urgent academic action needed)\n\n"
+        "Do not include markdown code block formatting or pre/post conversational text."
+    )
+
+    if not groq_client:
+        return mock_classify_chat_message(message_text, current_task)
+
+    try:
+        response = await groq_client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": json.dumps({"message_text": message_text, "current_task": current_task})}
+            ],
+            temperature=0.1,
+            max_tokens=256,
+            response_format={"type": "json_object"}
+        )
+        content = response.choices[0].message.content
+        logger.info(f"Groq chat classification response: {content}")
+        return json.loads(content)
+    except Exception as e:
+        logger.error(f"Failed calling Groq Chat API: {e}. Falling back to rule-based logic.")
+        return mock_classify_chat_message(message_text, current_task)
+
+def mock_classify_chat_message(message_text: str, current_task: str) -> Dict[str, Any]:
+    """Heuristic fallback for Peer Radar chat message classifier."""
+    msg = message_text.lower()
+    task = current_task.lower()
+    
+    # Simple heuristics
+    is_academic = any(word in msg for word in ["assignment", "project", "exam", "grade", "quiz", "lecture", "due", "professor", "ta", "compilers", "csl"])
+    is_urgent = any(word in msg for word in ["urgent", "emergency", "fail", "now", "help", "extension"])
+    
+    # Calculate relevance
+    relevance = 0.1
+    if is_academic:
+        relevance = 0.5
+        # Cross-reference with task keywords
+        task_words = [w for w in task.split() if len(w) > 3]
+        matching_words = [w for w in task_words if w in msg]
+        if matching_words:
+            relevance = min(0.95, 0.5 + (len(matching_words) * 0.15))
+            
+    category = "noise"
+    if is_academic:
+        category = "academic"
+    elif any(word in msg for word in ["party", "dinner", "game", "lol", "haha", "hey", "bro", "movie"]):
+        category = "social"
+        
+    return {
+        "category": category,
+        "relevance_score": relevance,
+        "summary": message_text[:60] + "..." if len(message_text) > 60 else message_text,
+        "should_override": is_academic and (relevance > 0.7 or is_urgent)
+    }
+

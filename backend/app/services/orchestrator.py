@@ -5,8 +5,10 @@ from typing import Dict, Any, List, Optional
 from uuid import UUID
 from groq import AsyncGroq
 from app.core.config import settings
-from app.database.models import AgentLog, AgentApproval
+from app.database.models import AgentLog, AgentApproval, Agent, Deadline, UserPreference, CognitiveState
+from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.services.groq_service import classify_chat_message
 
 logger = logging.getLogger(__name__)
 
@@ -216,3 +218,225 @@ class AgentOrchestrator:
                 "score": 0.50,
                 "feedback": "Unable to connect to evaluation engine. Default score applied."
             }
+
+    @classmethod
+    async def get_or_create_agent_id(cls, db: AsyncSession, agent_name: str) -> UUID:
+        """Helper to get or create an agent metadata entry in the database."""
+        import uuid
+        result = await db.execute(select(Agent.id).filter(Agent.agent_name == agent_name))
+        agent_id = result.scalar()
+        if not agent_id:
+            new_agent = Agent(
+                id=uuid.uuid4(),
+                agent_name=agent_name,
+                version="1.0.0",
+                status="active"
+            )
+            db.add(new_agent)
+            await db.flush()
+            agent_id = new_agent.id
+        return agent_id
+
+    @classmethod
+    async def apply_state_hysteresis(
+        cls,
+        user_id: UUID,
+        proposed_state: str,
+        confidence: float,
+        db: AsyncSession
+    ) -> str:
+        """
+        State Agent Hysteresis.
+        Prevents rapid cognitive state oscillation. Transitioning out of Flow
+        or into Overloaded requires multiple consecutive signals or high confidence.
+        """
+        # Query the last 3 determined states
+        result = await db.execute(
+            select(CognitiveState.state)
+            .filter(CognitiveState.user_id == user_id)
+            .order_by(CognitiveState.determined_at.desc())
+            .limit(3)
+        )
+        recent_states = [row[0] for row in result.all()]
+
+        if len(recent_states) < 2:
+            return proposed_state
+
+        current_committed_state = recent_states[0]
+
+        # Rule 1: Transitioning out of Flow requires 2 consecutive matching proposed ticks or high confidence
+        if current_committed_state == "Flow" and proposed_state != "Flow":
+            if confidence < 0.85 and recent_states[1] != proposed_state:
+                logger.info(f"Hysteresis: Suppressed state transition Flow -> {proposed_state} to prevent jitter.")
+                return "Flow"
+
+        # Rule 2: Transitioning into Overloaded requires high confidence or consecutive ticks
+        if proposed_state == "Overloaded" and current_committed_state != "Overloaded":
+            if confidence < 0.75 and recent_states[1] != "Overloaded":
+                logger.info("Hysteresis: Suppressed transition into Overloaded due to low confidence threshold.")
+                return current_committed_state
+
+        return proposed_state
+
+    @classmethod
+    async def evaluate_sculptor_interventions(
+        cls,
+        user_id: UUID,
+        current_state: str,
+        active_app: str,
+        db: AsyncSession
+    ) -> List[Dict[str, Any]]:
+        """
+        Environment Sculptor Decision Rules.
+        Checks user settings and generates workspace intervention proposals (DND, blocking, greyscale).
+        """
+        import uuid
+        from datetime import datetime, timedelta, timezone
+
+        # 1. Fetch user preferences
+        pref_result = await db.execute(select(UserPreference).filter(UserPreference.user_id == user_id))
+        pref = pref_result.scalar()
+        if not pref or not pref.environment_sculpt_enabled:
+            return []
+
+        interventions = []
+        agent_id = await cls.get_or_create_agent_id(db, "environment_sculptor")
+
+        # 2. Flow state -> Trigger DND
+        if current_state == "Flow" and pref.dnd_during_flow:
+            action = "ENABLE_DND"
+            logger.info("Environment Sculptor: Triggering ENABLE_DND action for Flow state.")
+            interventions.append({
+                "action": action,
+                "agent": "Environment Sculptor",
+                "desc": "Muted notifications and system triggers to protect Flow state.",
+                "target": "OS"
+            })
+            
+            # Log action directly (fully autonomous)
+            log = AgentLog(
+                user_id=user_id,
+                agent_id=agent_id,
+                action_taken=action,
+                execution_details={"reason": "Flow state entered"},
+                timestamp=datetime.now(timezone.utc)
+            )
+            db.add(log)
+
+        # 3. Distracted state with blacklisted process -> Propose BLOCK_APP approval
+        distractors = ["discord", "spotify", "twitter", "reddit", "whatsapp", "tiktok", "steam"]
+        app_lower = active_app.lower()
+        if current_state == "Distracted" and any(d in app_lower for d in distractors):
+            action_id = uuid.uuid4()
+            desc = f"Block focus-diverting application: '{active_app}'?"
+            
+            # Insert approval request in DB
+            approval = AgentApproval(
+                id=uuid.uuid4(),
+                user_id=user_id,
+                action_id=action_id,
+                action_type="BLOCK_APP",
+                status="pending",
+                payload={"agent": "Environment Sculptor", "desc": desc, "target": active_app},
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+                created_at=datetime.now(timezone.utc)
+            )
+            db.add(approval)
+            
+            interventions.append({
+                "id": str(action_id),
+                "action": "BLOCK_APP",
+                "agent": "Environment Sculptor",
+                "desc": desc,
+                "target": active_app,
+                "require_approval": True
+            })
+
+        # 4. Overloaded state -> Propose greyscale mode
+        if current_state == "Overloaded" and pref.screen_greyscale_trigger in ["Overloaded", "Fatigued"]:
+            action = "TRIGGER_GREYSCALE"
+            interventions.append({
+                "action": action,
+                "agent": "Environment Sculptor",
+                "desc": "Activated greyscale rendering mode to lower visual cognitive stress.",
+                "target": "OS"
+            })
+            
+            log = AgentLog(
+                user_id=user_id,
+                agent_id=agent_id,
+                action_taken=action,
+                execution_details={"reason": "Stress thresholds exceeded"},
+                timestamp=datetime.now(timezone.utc)
+            )
+            db.add(log)
+
+        await db.flush()
+        return interventions
+
+    @classmethod
+    async def process_peer_radar_message(
+        cls,
+        user_id: UUID,
+        message_text: str,
+        current_task: str,
+        current_state: str,
+        db: AsyncSession
+    ) -> Dict[str, Any]:
+        """
+        Peer Radar Message Processing.
+        Ingests external notifications, classifies them via Groq, matches relevance,
+        and decides whether to suppress or alert the user.
+        """
+        from datetime import datetime, timezone
+        
+        # 1. Run LLM/Heuristic classification
+        classification = await classify_chat_message(message_text, current_task)
+        category = classification.get("category", "noise")
+        relevance = classification.get("relevance_score", 0.0)
+        should_override = classification.get("should_override", False)
+        
+        # 2. Determine intervention
+        action = "PASS"
+        reason = "Message allowed under normal state bounds."
+        
+        if current_state == "Flow":
+            if category != "academic":
+                action = "SUPPRESS"
+                reason = "Non-academic message suppressed to protect active Flow session."
+            elif not should_override:
+                action = "SUPPRESS"
+                reason = "Academic message suppressed (insufficient urgency threshold) to protect Flow."
+            else:
+                action = "ALERT"
+                reason = "High-urgency academic alert allowed to bypass active DND rules."
+        else:
+            if should_override or (category == "academic" and relevance > 0.6):
+                action = "ALERT"
+                reason = "Relevant academic message highlighted."
+                
+        # 3. Log Peer Radar activity
+        agent_id = await cls.get_or_create_agent_id(db, "peer_radar")
+        log = AgentLog(
+            user_id=user_id,
+            agent_id=agent_id,
+            action_taken=f"CLASSIFY_MESSAGE_{action}",
+            execution_details={
+                "message_sample": message_text[:40] + "...",
+                "category": category,
+                "relevance": relevance,
+                "reason": reason
+            },
+            timestamp=datetime.now(timezone.utc)
+        )
+        db.add(log)
+        await db.flush()
+        
+        return {
+            "action": action,
+            "category": category,
+            "relevance_score": relevance,
+            "summary": classification.get("summary", ""),
+            "reason": reason
+        }
+

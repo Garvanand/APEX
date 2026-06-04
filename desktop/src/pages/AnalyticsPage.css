@@ -1,0 +1,337 @@
+/* ================================================================
+   AnalyticsPage Styles
+   ================================================================ */
+
+.analytics-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  height: 100%;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* ========== Header ========== */
+.analytics-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.analytics-header-left {
+  display: flex;
+  flex-direction: column;
+}
+
+.analytics-header .page-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 2px;
+}
+
+/* State indicator dot */
+.analytics-state-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.state-dot-Flow        { background: var(--color-flow);        box-shadow: 0 0 8px var(--color-flow); }
+.state-dot-Distracted  { background: var(--color-distracted);  box-shadow: 0 0 8px var(--color-distracted); }
+.state-dot-Fatigued    { background: var(--color-fatigued);    box-shadow: 0 0 8px var(--color-fatigued); }
+.state-dot-Overloaded  { background: var(--color-overloaded);  box-shadow: 0 0 8px var(--color-overloaded); }
+
+/* ========== Tab Bar ========== */
+.analytics-tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.analytics-tab {
+  padding: 6px 18px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color var(--transition-fast),
+              background var(--transition-fast);
+}
+
+.analytics-tab:hover {
+  color: var(--text-primary);
+}
+
+.analytics-tab.active {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* ========== Metric Summary Cards ========== */
+.analytics-metrics-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+.analytics-metric-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color var(--transition-fast),
+              transform var(--transition-fast);
+}
+
+.analytics-metric-card:hover {
+  border-color: var(--border-hover);
+  transform: translateY(-2px);
+}
+
+.analytics-metric-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.8px;
+  font-weight: 500;
+}
+
+.analytics-metric-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+
+.analytics-metric-unit {
+  font-size: 1.2rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-left: 2px;
+}
+
+.analytics-metric-delta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.delta-positive {
+  color: var(--color-flow);
+}
+
+.delta-negative {
+  color: var(--color-overloaded);
+}
+
+/* ========== Charts Row ========== */
+.analytics-charts-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.analytics-chart-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  transition: border-color var(--transition-fast);
+}
+
+.analytics-chart-card:hover {
+  border-color: var(--border-hover);
+}
+
+.analytics-chart-title {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 1.2px;
+  font-weight: 600;
+}
+
+/* ---- Horizontal Bar Chart ---- */
+.analytics-bar-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.analytics-hbar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 32px;
+}
+
+.analytics-hbar-label {
+  width: 90px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  text-align: right;
+  font-weight: 500;
+}
+
+.analytics-hbar-track {
+  flex: 1;
+  height: 32px;
+  background: var(--bg-tertiary);
+  border-radius: 0 6px 6px 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.analytics-hbar-fill {
+  height: 100%;
+  border-radius: 0 6px 6px 0;
+  transition: width var(--transition-smooth);
+  min-width: 4px;
+}
+
+.analytics-hbar-value {
+  width: 42px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  color: var(--text-primary);
+  font-weight: 600;
+  flex-shrink: 0;
+  text-align: left;
+}
+
+/* ---- Sparkline / Vertical Bar Chart ---- */
+.analytics-sparkline {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex: 1;
+  min-height: 120px;
+  padding-top: 8px;
+}
+
+.analytics-spark-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+}
+
+.analytics-spark-bar-wrapper {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.analytics-spark-bar {
+  width: 100%;
+  max-width: 36px;
+  background: var(--focus-ring);
+  border-radius: 4px 4px 0 0;
+  transition: height var(--transition-smooth),
+              opacity var(--transition-smooth);
+  min-height: 3px;
+}
+
+.analytics-spark-label {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* ========== Agent Intervention Frequency ========== */
+.analytics-interventions-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  transition: border-color var(--transition-fast);
+}
+
+.analytics-interventions-card:hover {
+  border-color: var(--border-hover);
+}
+
+.analytics-agent-list {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.analytics-agent-card {
+  flex: 1;
+  min-width: 140px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color var(--transition-fast),
+              transform var(--transition-fast);
+}
+
+.analytics-agent-card:hover {
+  border-color: var(--border-hover);
+  transform: translateY(-1px);
+}
+
+.analytics-agent-name {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.analytics-agent-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.analytics-agent-bar-track {
+  width: 100%;
+  height: 4px;
+  background: var(--bg-secondary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.analytics-agent-bar-fill {
+  height: 100%;
+  background: var(--focus-ring);
+  border-radius: 2px;
+  transition: width var(--transition-smooth);
+}

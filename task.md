@@ -45,3 +45,40 @@
 
 - `[x]` Create `.gitignore` rules for root, backend, desktop, and mobile
 - `[x]` Create production-level README.md documentation
+
+# APEX Development Tasks - Phase 5 (Mobile Screens)
+
+- `[x]` Splash Screen (Screen 1)
+- `[x]` Onboarding Page (Screen 2) - 5-step interactive profile
+- `[x]` Permissions Flow (Screen 3) - toggle controls and warning states
+- `[x]` Cognitive Dashboard (Screen 4) - pulsing rings, manual override
+- `[x]` Deadline Dashboard (Screen 5) - timeline/list views, collapsible subtasks
+- `[x]` Agent Control Center (Screen 6) - diagnostics, autonomy sliders
+- `[x]` Focus Session (Screen 7) - breathing animations, emergency exit
+- `[x]` Voice Capture (Screen 8) - transcript highlighting, soundwave animation
+- `[x]` Peer Radar (Screen 9) - dismissal, relevance badges
+- `[x]` Session Analytics (Screen 10) - custom painters for donut/spline charts
+- `[x]` Recovery Mode (Screen 11) - triage checklist, de-escalation actions
+- `[x]` Settings Page (Screen 12) - integration toggles, cache management
+- `[x]` Profile Page (Screen 13) - baseline parameter analytics, account actions
+- `[x]` Main navigation with IndexedStack routing
+
+# APEX Development Tasks - Phase 6 (Desktop Refactoring)
+
+- `[/]` Create shared TypeScript types and interfaces (`types/index.ts`)
+- `[/]` Create custom hooks (useWebSocket, useTelemetry, useFocusTimer, useCommandPalette)
+- `[/]` Create AppContext provider for global state
+- `[/]` Create extended CSS system (command-palette, focus-session, analytics, settings)
+- `[ ]` Decompose App.tsx into page components:
+  - `[ ]` Sidebar component with navigation
+  - `[ ]` Dashboard page (cognitive state + telemetry + logs)
+  - `[ ]` Agent Center page (agent grid + mediation config + detail panels)
+  - `[ ]` Sculptor Approvals page (pending queue + action history)
+  - `[ ]` Deadline War Room page (risk map + timeline + detail view)
+  - `[ ]` Socratic Challenger page (challenge queue + evaluation + history)
+  - `[ ]` Focus Session page (full-screen timer + breathing + break prompts)
+  - `[ ]` Analytics/Insights page (charts + trends + export)
+  - `[ ]` Settings page (preferences + integrations + danger zone)
+- `[ ]` Create Command Palette component (Ctrl+K)
+- `[ ]` Rewire App.tsx as thin shell with routing
+- `[ ]` Verify desktop build compiles successfully

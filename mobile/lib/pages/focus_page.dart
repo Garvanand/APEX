@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../services/websocket_service.dart';
+import '../models/cognitive_state.dart';
 
 class FocusPage extends StatefulWidget {
   const FocusPage({super.key});
@@ -8,151 +11,226 @@ class FocusPage extends StatefulWidget {
   State<FocusPage> createState() => _FocusPageState();
 }
 
-class _FocusPageState extends State<FocusPage> with SingleTickerProviderStateMixin {
-  late AnimationController _breathingController;
-  late Animation<double> _breathingAnimation;
+class _FocusPageState extends State<FocusPage> with TickerProviderStateMixin {
+  late AnimationController _pulseController;
+  late AnimationController _exitHoldController;
   
   Timer? _countdownTimer;
-  int _secondsLeft = 1500; // 25-minute Pomodoro
+  int _secondsRemaining = 2700; // 45:00
+  bool _isActive = true;
 
   @override
   void initState() {
     super.initState();
-    
-    // Guided breathing animation (4-second inhale, 4-second exhale)
-    _breathingController = AnimationController(
+    _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 4),
-    )..addStatusListener((status) {
-        if (status == AnimationStatus.completed) {
-          _breathingController.reverse();
-        } else if (status == AnimationStatus.dismissed) {
-          _breathingController.forward();
-        }
-      });
+      duration: const Duration(milliseconds: 4000),
+    )..repeat(reverse: true);
 
-    _breathingAnimation = Tween<double>(begin: 1.0, end: 1.4).animate(
-      CurvedAnimation(
-        parent: _breathingController,
-        curve: Curves.easeInOut,
-      ),
+    _exitHoldController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
     );
 
-    _breathingController.forward();
+    _exitHoldController.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        _exitFocusSession();
+      }
+    });
 
-    // Timer countdown
+    _startTimer();
+  }
+
+  void _startTimer() {
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) {
-        setState(() {
-          if (_secondsLeft > 0) {
-            _secondsLeft--;
-          } else {
-            _countdownTimer?.cancel();
-          }
-        });
+      if (_secondsRemaining > 0) {
+        if (mounted) {
+          setState(() {
+            _secondsRemaining--;
+          });
+        }
+      } else {
+        _exitFocusSession();
       }
     });
   }
 
+  void _exitFocusSession() {
+    _countdownTimer?.cancel();
+    if (mounted) {
+      Navigator.pop(context);
+    }
+  }
+
   @override
   void dispose() {
-    _breathingController.dispose();
     _countdownTimer?.cancel();
+    _pulseController.dispose();
+    _exitHoldController.dispose();
     super.dispose();
   }
 
-  String _formatDuration(int totalSecs) {
-    int m = totalSecs ~/ 60;
-    int s = totalSecs % 60;
-    return '${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}';
+  String _formatTime(int totalSeconds) {
+    int minutes = totalSeconds ~/ 60;
+    int seconds = totalSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
   @override
   Widget build(BuildContext context) {
+    final wsService = Provider.of<WebSocketService>(context);
+    final displayedState = wsService.currentState?.state ?? 'Flow';
+
+    // Ease breathing rate dynamically based on state
+    if (displayedState == 'Overloaded') {
+      _pulseController.duration = const Duration(milliseconds: 2000);
+    } else if (displayedState == 'Fatigued') {
+      _pulseController.duration = const Duration(milliseconds: 6000);
+    } else {
+      _pulseController.duration = const Duration(milliseconds: 4000);
+    }
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text('Focus Session', style: TextStyle(color: Colors.white, fontSize: 16)),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+      backgroundColor: const Color(0xFF000000),
+      body: SafeArea(
+        child: Stack(
+          alignment: Alignment.center,
           children: [
-            Text(
-              _formatDuration(_secondsLeft),
-              style: const TextStyle(
-                fontSize: 54, 
-                fontWeight: FontWeight.bold, 
-                color: Colors.white,
-                fontFamily: 'Courier',
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'KEEP FOCUS • ALERTS MUTED',
-              style: TextStyle(color: Colors.grey, fontSize: 12, letterSpacing: 1.5),
-            ),
-            const SizedBox(height: 60),
-            
-            // Breathing animation container
+            // Centered Breathing Background Vector
             AnimatedBuilder(
-              animation: _breathingAnimation,
+              animation: _pulseController,
               builder: (context, child) {
-                return Transform.scale(
-                  scale: _breathingAnimation.value,
-                  child: Container(
-                    width: 140,
-                    height: 140,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: const Color(0xFF00D26A).withOpacity(0.15),
-                      border: BorderSide(
-                        color: const Color(0xFF00D26A).withOpacity(0.5),
-                        width: 2,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF00D26A).withOpacity(0.3),
-                          blurRadius: 20 * _breathingAnimation.value,
-                          spreadRadius: 2,
-                        )
+                double scale = 0.85 + _pulseController.value * 0.25;
+                double opacity = 0.03 + _pulseController.value * 0.08;
+                return Container(
+                  width: 320 * scale,
+                  height: 320 * scale,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        const Color(0xFFFFD400).withOpacity(opacity),
+                        const Color(0xFFFFD400).withOpacity(0.0),
                       ],
-                    ),
-                    child: const Center(
-                      child: Text(
-                        'BREATHE',
-                        style: TextStyle(
-                          color: Color(0xFF00D26A),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                          letterSpacing: 2,
-                        ),
-                      ),
                     ),
                   ),
                 );
               },
             ),
-            
-            const SizedBox(height: 80),
-            OutlinedButton(
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Colors.red),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
+
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text(
+                  "DEEP FLOW WORKSPACE",
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFFA5A5A5),
+                    letterSpacing: 2.0,
+                  ),
                 ),
+                const SizedBox(height: 24),
+                // Core Timer Countdown text
+                Text(
+                  _formatTime(_secondsRemaining),
+                  style: const TextStyle(
+                    fontFamily: 'Cabinet Grotesk',
+                    fontSize: 72,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFFFFD400),
+                    letterSpacing: -1.0,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  "CS301 COMPILER LAB 3",
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white.withOpacity(0.8),
+                    letterSpacing: 1.0,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  "DND Stream active  •  Device Handover Linked",
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 11,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+
+            // Hold-to-Exit emergency control button
+            Positioned(
+              bottom: 48,
+              child: Column(
+                children: [
+                  GestureDetector(
+                    onTapDown: (_) {
+                      _exitHoldController.forward();
+                    },
+                    onTapUp: (_) {
+                      if (_exitHoldController.status != AnimationStatus.completed) {
+                        _exitHoldController.reverse();
+                      }
+                    },
+                    onTapCancel: () {
+                      _exitHoldController.reverse();
+                    },
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // Radial progress frame border
+                        SizedBox(
+                          width: 72,
+                          height: 72,
+                          child: AnimatedBuilder(
+                            animation: _exitHoldController,
+                            builder: (context, child) {
+                              return CircularProgressIndicator(
+                                value: _exitHoldController.value,
+                                strokeWidth: 2,
+                                backgroundColor: const Color(0xFF1F1F1F),
+                                valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF4D4F)),
+                              );
+                            },
+                          ),
+                        ),
+                        Container(
+                          width: 56,
+                          height: 56,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF121212),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.close,
+                            color: Color(0xFFFF4D4F),
+                            size: 24,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    "HOLD TO EXIT FOCUS",
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFFFF4D4F),
+                      letterSpacing: 1.0,
+                    ),
+                  ),
+                ],
               ),
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: const Text('End Focus Session', style: TextStyle(color: Colors.red)),
             ),
           ],
         ),
