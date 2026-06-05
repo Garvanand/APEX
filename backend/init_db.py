@@ -14,16 +14,6 @@ async def init_db():
     
     async with engine.begin() as conn:
         try:
-            from sqlalchemy import text
-            # 1. Install uuid-ossp
-            logger.info("Initializing 'uuid-ossp' extension...")
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"))
-            
-            # 2. Install vector
-            logger.info("Initializing 'vector' extension...")
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"vector\";"))
-            
-            # 3. Create all mapped tables
             logger.info("Creating all APEX database tables...")
             await conn.run_sync(Base.metadata.create_all)
             

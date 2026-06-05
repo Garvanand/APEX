@@ -26,7 +26,7 @@ APEX operates as a three-tier hybrid edge-cloud orchestration system connected v
 
 1. **Sensing Layer (Edge Mobile)**: A Flutter mobile companion running on iQOO hardware that tracks heart rate, HRV, blink rates, and ambient noise to calculate cognitive load.
 2. **Execution Layer (Edge Desktop)**: A Tauri-based React/TypeScript desktop application with a dynamic, layout-morphing UI that reorganizes itself entirely based on the user's active context.
-3. **Intelligence Layer (Cloud Gateway)**: A FastAPI Python backend powered by PostgreSQL, Redis, and Groq Cloud (`llama-3.1-8b` and `llama-3.3-70b`) to evaluate state, compute deadline risks, and generate Socratic challenges.
+3. **Intelligence Layer (Cloud Gateway)**: A FastAPI Python backend powered by SQLite, an in-memory event bus, and Groq Cloud (`llama-3.1-8b` and `llama-3.3-70b`) to evaluate state, compute deadline risks, and generate Socratic challenges.
 
 ## 🧠 The Agent Swarm
 
@@ -61,8 +61,8 @@ APEX includes a cinematic, 78-second autonomous demonstration mode designed for 
 
 ## 🛠️ Technology Stack
 
-* **Backend**: FastAPI (Python 3.12), SQLAlchemy (ORM), asyncpg, WebSockets
-* **Data & Cache**: PostgreSQL, Upstash Redis Serverless
+* **Backend**: FastAPI (Python 3.12), SQLAlchemy (ORM), aiosqlite, WebSockets
+* **Data & Cache**: SQLite, InMemoryEventBus
 * **Desktop Client**: React 19, TypeScript, TailwindCSS 4, Framer Motion, Vite
 * **Mobile Companion**: Flutter (Dart)
 * **LLM Intelligence**: Groq Cloud (`llama-3.1-8b`, `llama-3.3-70b-versatile`)
@@ -74,23 +74,20 @@ APEX includes a cinematic, 78-second autonomous demonstration mode designed for 
 ### 1. Requirements
 * Node.js v20+
 * Python 3.12+
-* Docker (for local Postgres & Redis)
 * Flutter SDK (for mobile companion)
 
 ### 2. Environment Setup
-Create a `.env` file in the `/backend` directory:
+Create a `development.env` file in the `/backend` directory:
 ```env
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/apex
+DATABASE_URL=sqlite+aiosqlite:///./apex_dev.db
 JWT_SECRET_KEY=your_cryptographic_secret
 GROQ_API_KEY=your_groq_api_key
-UPSTASH_REDIS_REST_URL=your_upstash_url
-UPSTASH_REDIS_REST_TOKEN=your_upstash_token
 ```
 
 ### 3. Start Backend Services
+Initialize the local SQLite database and start the FastAPI server:
 ```bash
 cd backend
-docker compose up -d
 python init_db.py
 python main.py
 ```

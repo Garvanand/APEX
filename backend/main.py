@@ -5,6 +5,7 @@ import logging
 from app.api.auth import router as auth_router
 from app.api.cognitive import router as cognitive_router
 from app.api.agents import router as agents_router
+from app.api.pairing import router as pairing_router
 from app.core.database import engine
 from app.database.models import Base
 
@@ -35,15 +36,7 @@ async def startup_event():
     logger.info("Initializing database extensions and schemas...")
     async with engine.begin() as conn:
         try:
-            # Create extensions (requires superuser access on PostgreSQL)
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"))
-            try:
-                await conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"vector\";"))
-            except Exception as e:
-                logger.warning(
-                    f"Warning: could not initialize 'pgvector' extension: {e}. "
-                    "Vector search features will be degraded if vector support is missing."
-                )
+            pass
             
             # Create tables
             await conn.run_sync(Base.metadata.create_all)
@@ -55,6 +48,7 @@ async def startup_event():
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(cognitive_router, prefix="/api/v1")
 app.include_router(agents_router, prefix="/api/v1")
+app.include_router(pairing_router, prefix="/api/v1")
 
 @app.get("/health", tags=["System"])
 def health_check():

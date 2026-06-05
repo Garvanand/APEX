@@ -146,14 +146,34 @@ export default function CommandPalette({ onNavigate }: CommandPaletteProps) {
     // --- System Pitch ---
     {
       id: "run-demo",
-      title: "Run Judging Demo Sequence",
-      subtitle: "System: execute 60-90s presentation flow",
+      title: "Run APEX Story",
+      subtitle: "System: execute 60-90s judging presentation flow",
       icon: Sparkles,
       shortcut: ["⇧", "⌘", "D"],
       category: "System Pitch",
       action: () => {
         import('../demo/DemoRunner').then(m => {
           m.demoRunnerEmitter.dispatchEvent(new Event('play'));
+        });
+        onNavigate("workspace");
+      }
+    },
+    {
+      id: "run-stress-test",
+      title: "Run Reliability Stress Test",
+      subtitle: "System: execute 1000x loops of UI abuse testing",
+      icon: ShieldAlert,
+      shortcut: ["⇧", "⌘", "T"],
+      category: "System Pitch",
+      action: () => {
+        import('../tests/StressTestRunner').then(m => {
+          // Provide context methods required for the test
+          m.stressTestRunner.run({
+            setCognitiveState,
+            triggerOptimization,
+            disconnect: () => {}, // mock
+            connect: () => {}, // mock
+          });
         });
         onNavigate("workspace");
       }

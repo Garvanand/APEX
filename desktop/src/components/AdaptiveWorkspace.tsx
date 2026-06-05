@@ -6,11 +6,13 @@ import {
   BookOpen, Edit3, Target, Plus, ExternalLink, Link2, Cpu
 } from "lucide-react";
 import { useAppContext } from "../context/AppContext";
+import { fetchWithRetry } from "../utils/api";
 import CognitiveStateEngine from "../components/CognitiveStateEngine";
 import AgentActivityStream from "../components/AgentActivityStream";
 import AgentCollaborationGraph from "../components/AgentCollaborationGraph";
 import MobileSimulatorPage from "../pages/MobileSimulatorPage";
 import { useDemoState } from "../demo/DemoStateStore";
+import WorkspaceStoryEngine from "./WorkspaceStoryEngine";
 
 export default function AdaptiveWorkspace() {
   const { cognitiveState, confidence, logs, addLog, telemetry, interpreted, adaptiveMode, setAdaptiveMode, triggerOptimization } = useAppContext();
@@ -78,14 +80,14 @@ export default function AdaptiveWorkspace() {
 
   const handleAutonomyChange = (id: string, val: number) => {
     setAgents(prev => prev.map(a => a.id === id ? { ...a, autonomyLevel: val } : a));
-    addLog("System", "Autonomy level adjustment", "User manual override", `Set ${agents.find(a => a.id === id)?.name} autonomy level to ${val}%`, "Autonomy updated");
+    addLog("System", "User manual override", "Direct slider input", `Set ${agents.find(a => a.id === id)?.name} autonomy level to ${val}%`, "Autonomy updated", "System +0", 100);
   };
 
   const toggleStatus = (id: string) => {
     setAgents(prev => prev.map(a => {
       if (a.id === id) {
         const newStatus = a.status === "active" ? "paused" : "active";
-        addLog(a.name, "Agent operational status toggled", "User manual override", `Changed status to: ${newStatus.toUpperCase()}`, "Status updated");
+        addLog(a.name, "User manual override", "Direct switch toggle", `Changed status to: ${newStatus.toUpperCase()}`, "Status updated", "System +0", 100);
         return { ...a, status: newStatus as any };
       }
       return a;
@@ -150,6 +152,15 @@ export default function AdaptiveWorkspace() {
                   Deactivate Triage
                 </button>
               )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Workspace Story Engine */}
+        <AnimatePresence>
+          {adaptiveMode !== "flow" && (
+            <motion.div className="mb-6 z-20 relative" layoutId="story-engine">
+              <WorkspaceStoryEngine />
             </motion.div>
           )}
         </AnimatePresence>
@@ -228,6 +239,19 @@ export default function AdaptiveWorkspace() {
                     className="p-1.5 rounded bg-white/5 hover:bg-white/10 text-secondary-text transition-colors border border-white/5"
                   >
                     <Play className={`w-3 h-3 ${timerRunning ? "rotate-90 text-accent" : ""}`} />
+                  </button>
+                  <button 
+                    onClick={() => {
+                      fetchWithRetry("http://localhost:8000/api/v1/cognitive/simulate", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ state: "DISTRACTED" })
+                      }).catch(console.error);
+                    }}
+                    className="px-2 py-1 rounded bg-warning/10 hover:bg-warning/20 text-warning text-[10px] font-bold uppercase transition-colors border border-warning/20"
+                    title="Simulate FLOW -> DISTRACTED State Transition"
+                  >
+                    Simulate Distraction
                   </button>
                   {!rightPanelOpen && (
                     <button 
@@ -466,6 +490,14 @@ export default function AdaptiveWorkspace() {
                 transition={{ duration: 0.4 }}
                 className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full"
               >
+                {/* Cross-Page Awareness Context Transfer UI */}
+                <div className="col-span-full mb-2 flex items-center justify-between bg-accent/10 border border-accent/20 px-4 py-2 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-accent" />
+                    <span className="text-xs font-semibold text-white/90">Research Context Imported: 2 Sources, 1 Live Outline</span>
+                  </div>
+                </div>
+
                 {/* Left: Outline */}
                 <motion.div layout className="bg-secondary-surface border border-white/5 rounded-xl p-5 flex flex-col h-full overflow-hidden">
                   <div className="flex items-center justify-between border-b border-white/5 pb-4 mb-4">
@@ -611,143 +643,6 @@ export default function AdaptiveWorkspace() {
           </AnimatePresence>
         </motion.div>
       </motion.div>
-
-      {/* ── Right Side: Collapsible Control Center Panel ── */}
-      <AnimatePresence>
-        {rightPanelOpen && (
-          <motion.div
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 380, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="w-[380px] shrink-0 bg-secondary-surface border border-white/5 rounded-xl p-4 flex flex-col h-full overflow-hidden"
-          >
-            {/* Panel Tabs Header */}
-            <div className="flex items-center justify-between border-b border-white/5 pb-3 mb-4 shrink-0">
-              <div className="flex bg-black/40 p-0.5 rounded-lg border border-white/5">
-                <button
-                  onClick={() => setRightPanelTab("agents")}
-                  className={`px-3 py-1 rounded-md text-[10px] uppercase font-bold tracking-wider transition-colors ${
-                    rightPanelTab === "agents" ? "bg-white text-black" : "text-secondary-text hover:text-white"
-                  }`}
-                >
-                  Agents
-                </button>
-                <button
-                  onClick={() => setRightPanelTab("mobile")}
-                  className={`px-3 py-1 rounded-md text-[10px] uppercase font-bold tracking-wider transition-colors ${
-                    rightPanelTab === "mobile" ? "bg-white text-black" : "text-secondary-text hover:text-white"
-                  }`}
-                >
-                  iQOO Link
-                </button>
-              </div>
-              <button 
-                onClick={() => setRightPanelOpen(false)}
-                className="text-[10px] font-mono text-secondary-text hover:text-white bg-white/5 px-2 py-1 rounded"
-              >
-                Hide Panel
-              </button>
-            </div>
-
-            {/* Panel Content */}
-            <div className="flex-1 overflow-y-auto scrollbar-thin pr-1 select-none">
-              {rightPanelTab === "agents" ? (
-                <div className="space-y-4">
-                  {/* Accordion list of agents */}
-                  <div className="space-y-2">
-                    {agents.map(agent => {
-                      const isSelected = agent.id === selectedAgentId;
-                      return (
-                        <div
-                          key={agent.id}
-                          onClick={() => setSelectedAgentId(agent.id)}
-                          className={`p-3 rounded-lg border cursor-pointer transition-all ${
-                            isSelected ? "bg-white/5 border-white/10" : "bg-black/20 border-white/5 hover:bg-black/40"
-                          }`}
-                          style={{ borderLeftWidth: isSelected ? "3px" : "1px", borderLeftColor: agent.color }}
-                        >
-                          <div className="flex justify-between items-center">
-                            <span className="text-xs font-semibold text-white">{agent.name}</span>
-                            <span className={`text-[9px] font-mono capitalize px-1.5 py-0.5 rounded ${
-                              agent.status === "active" ? "text-success bg-success/5 border border-success/10" : "text-white/30 bg-white/5"
-                            }`}>
-                              {agent.status}
-                            </span>
-                          </div>
-                          
-                          {isSelected && (
-                            <motion.div 
-                              initial={{ height: 0, opacity: 0 }}
-                              animate={{ height: "auto", opacity: 1 }}
-                              className="mt-3 pt-3 border-t border-white/5 space-y-3 overflow-hidden"
-                            >
-                              <p className="text-[11px] text-secondary-text leading-relaxed">{agent.description}</p>
-                              
-                              {/* Latency & Last Action */}
-                              <div className="bg-black/20 p-2.5 rounded border border-white/5 text-[10px] space-y-1">
-                                <div className="flex justify-between">
-                                  <span className="text-secondary-text font-mono">LATENCY:</span>
-                                  <span className="font-mono text-white">{agent.latency}ms</span>
-                                </div>
-                                <div className="flex justify-between gap-3">
-                                  <span className="text-secondary-text font-mono shrink-0">LAST ACTION:</span>
-                                  <span className="text-accent truncate font-semibold">{agent.lastAction}</span>
-                                </div>
-                              </div>
-
-                              {/* Autonomy slider */}
-                              <div className="space-y-1">
-                                <div className="flex justify-between text-[10px]">
-                                  <span className="text-secondary-text">Autonomy Level:</span>
-                                  <span className="font-mono text-accent font-semibold">{agent.autonomyLevel}%</span>
-                                </div>
-                                <input
-                                  type="range"
-                                  min="0"
-                                  max="100"
-                                  value={agent.autonomyLevel}
-                                  onChange={(e) => handleAutonomyChange(agent.id, parseInt(e.target.value))}
-                                  className="w-full h-1 bg-black/40 rounded appearance-none cursor-pointer accent-accent"
-                                />
-                              </div>
-
-                              {/* Status Toggle Button */}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleStatus(agent.id);
-                                }}
-                                className={`w-full py-1.5 rounded text-[10px] font-bold uppercase transition-colors border ${
-                                  agent.status === "active"
-                                    ? "bg-danger/10 border-danger/25 text-danger hover:bg-danger/20"
-                                    : "bg-success/10 border-success/25 text-success hover:bg-success/20"
-                                }`}
-                              >
-                                {agent.status === "active" ? "Pause Agent" : "Resume Agent"}
-                              </button>
-                            </motion.div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Collaboration Graph Trace */}
-                  <div className="pt-2">
-                    <AgentCollaborationGraph />
-                  </div>
-                </div>
-              ) : (
-                <div className="w-full flex justify-center">
-                  <MobileSimulatorPage minimal={true} />
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
     </div>
   );
 }

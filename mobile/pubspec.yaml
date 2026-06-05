@@ -15,10 +15,11 @@ dependencies:
   web_socket_channel: ^2.4.5
   
   # State Management & Helpers
-  provider: ^6.1.1
+  flutter_riverpod: ^2.4.9
   shared_preferences: ^2.2.2
   intl: ^0.19.0
   cupertino_icons: ^1.0.6
+  mobile_scanner: ^5.0.0
 
 dev_dependencies:
   flutter_test:

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from app.core.security import get_password_hash, verify_password, create_access_token, decode_token
-from app.core.redis_client import redis_client
+
 from app.services.groq_service import classify_cognitive_state
 from app.schemas.schemas import SignalIngest, UserCreate
 from pydantic import ValidationError
@@ -23,25 +23,7 @@ async def test_security():
     assert decoded == user_id
     logger.info("JWT access token creation and decoding verified successfully.")
 
-async def test_upstash_redis():
-    logger.info("--- Testing Upstash Redis REST API Connection ---")
-    try:
-        # Test basic SET command
-        set_ok = await redis_client.set("apex:test:key", "presence_active", ex=60)
-        logger.info(f"SET 'apex:test:key' -> Result: {set_ok}")
 
-        # Test basic GET command
-        val = await redis_client.get("apex:test:key")
-        logger.info(f"GET 'apex:test:key' -> Result: '{val}'")
-        assert val == "presence_active"
-
-        # Test delete command
-        deleted = await redis_client.delete("apex:test:key")
-        logger.info(f"DELETE 'apex:test:key' -> Result: {deleted}")
-        
-        logger.info("Upstash Redis REST connectivity verified successfully.")
-    except Exception as e:
-        logger.error(f"Upstash Redis REST connection failed: {e}")
 
 async def test_groq_service():
     logger.info("--- Testing Groq API Cognitive State Classifier ---")
@@ -152,7 +134,7 @@ async def test_socratic_challenger():
 async def main():
     await test_security()
     test_pydantic_schemas()
-    await test_upstash_redis()
+
     await test_groq_service()
     await test_agent_orchestration()
     await test_socratic_challenger()

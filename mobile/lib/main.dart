@@ -1,20 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'services/websocket_service.dart';
-import 'pages/splash_screen.dart';
-import 'pages/home_page.dart';
-import 'pages/deadline_page.dart';
-import 'pages/agent_page.dart';
-import 'pages/session_analytics_page.dart';
-import 'pages/profile_page.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'core/theme.dart';
+import 'services/providers.dart';
+import 'features/onboarding/onboarding_screen.dart';
+import 'features/pulse/pulse_screen.dart';
+import 'features/directive/directive_screen.dart';
+import 'features/intelligence/intelligence_screen.dart';
+import 'widgets/apex_bottom_nav.dart';
 
 void main() {
   runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => WebSocketService()),
-      ],
-      child: const ApexApp(),
+    const ProviderScope(
+      child: ApexApp(),
     ),
   );
 }
@@ -27,21 +25,28 @@ class ApexApp extends StatelessWidget {
     return MaterialApp(
       title: 'APEX Companion',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        primaryColor: const Color(0xFFFFD400),
-        scaffoldBackgroundColor: const Color(0xFF000000),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFFFFD400),
-          secondary: Color(0xFF00D26A),
-          surface: Color(0xFF121212),
-          background: Color(0xFF000000),
-        ),
-        fontFamily: 'Inter',
-        useMaterial3: true,
-      ),
-      home: const SplashScreen(),
+      theme: ApexTheme.theme,
+      home: const InitialRouter(),
     );
+  }
+}
+
+class InitialRouter extends ConsumerWidget {
+  const InitialRouter({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isPaired = ref.watch(isPairedProvider);
+
+    if (!isPaired) {
+      return OnboardingScreen(
+        onComplete: () {
+          // state changes in provider will trigger a rebuild here automatically
+        },
+      );
+    }
+
+    return const MainNavigationScreen();
   }
 }
 
@@ -55,70 +60,27 @@ class MainNavigationScreen extends StatefulWidget {
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
 
-  final List<Widget> _screens = [
-    const HomePage(),
-    const DeadlinePage(),
-    const AgentPage(),
-    const SessionAnalyticsPage(),
-    const ProfilePage(),
+  final List<Widget> _screens = const [
+    PulseScreen(),
+    DirectiveScreen(),
+    IntelligenceScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF000000),
+      backgroundColor: ApexTheme.black,
       body: IndexedStack(
         index: _currentIndex,
         children: _screens,
       ),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          border: Border(
-            top: BorderSide(color: Color(0xFF1F1F1F), width: 1.0),
-          ),
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          backgroundColor: const Color(0xFF0A0A0A),
-          selectedItemColor: const Color(0xFFFFD400),
-          unselectedItemColor: const Color(0xFFA5A5A5),
-          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10, letterSpacing: 0.5),
-          unselectedLabelStyle: const TextStyle(fontSize: 10, letterSpacing: 0.5),
-          type: BottomNavigationBarType.fixed,
-          elevation: 0,
-          onTap: (index) {
-            setState(() {
-              _currentIndex = index;
-            });
-          },
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.dashboard_outlined),
-              activeIcon: Icon(Icons.dashboard),
-              label: 'HOME',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.calendar_today_outlined),
-              activeIcon: Icon(Icons.calendar_today),
-              label: 'DEADLINES',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.psychology_outlined),
-              activeIcon: Icon(Icons.psychology),
-              label: 'AGENTS',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.bar_chart_outlined),
-              activeIcon: Icon(Icons.bar_chart),
-              label: 'INSIGHTS',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline),
-              activeIcon: Icon(Icons.person),
-              label: 'PROFILE',
-            ),
-          ],
-        ),
+      bottomNavigationBar: ApexBottomNav(
+        currentIndex: _currentIndex,
+        onTabSelected: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
       ),
     );
   }

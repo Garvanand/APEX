@@ -4,6 +4,7 @@ import {
   Settings, Cpu, Sparkles, LayoutDashboard
 } from "lucide-react";
 import { useAppContext } from "../context/AppContext";
+import { HardwareAdvantageWidget } from "./HardwareAdvantageWidget";
 
 export interface NavItem {
   id: string;
@@ -27,8 +28,8 @@ export default function Sidebar({
 
   const NAV_ITEMS: NavItem[] = [
     { id: "workspace", label: "Workspace", icon: <LayoutDashboard className="w-4 h-4" /> },
-    { id: "intelligence", label: "System Intelligence", icon: <Cpu className="w-4 h-4" /> },
-    { id: "insights", label: "Insights", icon: <Sparkles className="w-4 h-4" /> },
+    { id: "intelligence", label: "Focus Engine", icon: <Cpu className="w-4 h-4" /> },
+    { id: "insights", label: "Journey", icon: <Sparkles className="w-4 h-4" /> },
     { id: "settings", label: "Settings", icon: <Settings className="w-4 h-4" /> },
   ];
 
@@ -128,6 +129,14 @@ export default function Sidebar({
               </button>
             );
           })}
+          
+          <AnimatePresence>
+            {!isFlow && (
+              <motion.div initial={{opacity: 0}} animate={{opacity: 1}} exit={{opacity: 0}}>
+                <HardwareAdvantageWidget />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </nav>
       </div>
 

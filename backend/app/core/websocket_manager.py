@@ -3,7 +3,7 @@ from typing import Dict, List
 import json
 import logging
 from uuid import UUID
-from app.core.redis_client import redis_client
+from app.core.event_bus import event_bus
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +23,9 @@ class ConnectionManager:
         self.active_connections[user_id].append(websocket)
         logger.info(f"User {user_id} connected via WebSocket. Active connections: {len(self.active_connections[user_id])}")
 
-        # Notify Redis event bus of new connection
+        # Notify internal event bus of new connection
         try:
-            await redis_client.publish(
+            await event_bus.publish(
                 "apex:events",
                 json.dumps({
                     "event": "USER_CONNECTED",
@@ -70,13 +70,13 @@ class ConnectionManager:
         }
         await self.broadcast_to_user(user_id, message)
 
-        # Mirror event to the central Redis event bus
+        # Mirror event to the central event bus
         try:
-            await redis_client.publish(
+            await event_bus.publish(
                 f"apex:user:{user_id}",
                 json.dumps(message)
             )
         except Exception as e:
-            logger.warning(f"Unable to publish system event to Redis: {e}")
+            logger.warning(f"Unable to publish system event: {e}")
 
 manager = ConnectionManager()

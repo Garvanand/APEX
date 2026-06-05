@@ -21,12 +21,14 @@ export type SessionState = 'active' | 'paused' | 'completed' | 'abandoned';
 
 export interface AgentLog {
   id: string;
-  time: string;
+  time: string; // timestamp
   agent: string;
-  trigger: string;
+  problem: string;
   reason: string;
   action: string;
   outcome: string;
+  impact: string;
+  confidence: number;
 }
 
 export interface ApprovalRequest {
@@ -106,7 +108,11 @@ export interface WorkspaceTemplate {
 
 export interface CognitiveStatePayload {
   state: CognitiveState;
-  confidence_score: number;
+  confidence_score?: number;
+  confidence?: number;
+  attention_stability?: "Optimal" | "Stable" | "Erratic" | "Critically Low" | "Drifting";
+  focus_trend?: "Positive" | "Stable" | "Declining" | "Negative";
+  cognitive_load?: "Low" | "Optimal" | "High" | "Overloaded" | "Depleted" | "Critical";
 }
 
 export interface RawTelemetryPayload {

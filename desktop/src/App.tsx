@@ -9,6 +9,9 @@ import OptimizationVisualizer from "./components/OptimizationVisualizer";
 import { Smartphone } from "lucide-react";
 
 import AdaptiveWorkspace from "./components/AdaptiveWorkspace";
+import { DevicePairingModal } from "./components/DevicePairingModal";
+import GlobalExecutiveHeader from "./components/GlobalExecutiveHeader";
+import GlobalInterventionFeed from "./components/GlobalInterventionFeed";
 
 // Import remaining separate pages
 import SocraticPage from "./pages/SocraticPage";
@@ -21,8 +24,9 @@ import { useAppContext } from "./context/AppContext";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>("workspace");
-  const { isLoggedIn, login, cognitiveState, isOptimizing, showPhoneOverlay } = useAppContext();
+  const { isLoggedIn, login, cognitiveState, isOptimizing, showPhoneOverlay, isLocalMode } = useAppContext();
   const [tokenInput, setTokenInput] = useState("");
+  const [showPairing, setShowPairing] = useState(false);
 
   React.useEffect(() => {
     const handleForceWorkspace = () => setActiveTab("workspace");
@@ -41,69 +45,50 @@ export default function App() {
     Distracted: "#0F0E0A", // Subtle amber/yellow undertone
     Fatigued: "#0A0B12", // Cooler palette
     Overloaded: "#120A0A", // Emergency red undertone
-  };
-
   return (
-    <motion.div 
-      className="flex h-screen w-screen overflow-hidden text-primary-text font-sans"
-      animate={{ backgroundColor: bgMap[cognitiveState] }}
-      transition={{ duration: 1.5, ease: "easeInOut" }}
-    >
+    <div className="flex flex-col h-screen w-screen overflow-hidden text-primary-text font-sans bg-[#0A0D0B]">
       
-      {/* Sidebar Navigation */}
-      <Sidebar 
-        activeTab={activeTab} 
-        onTabChange={setActiveTab}
-        onCommandPalette={() => commandPaletteEmitter.dispatchEvent(new Event("open"))}
-      />
+      {/* 1. Global Executive Header (Full Width) */}
+      <GlobalExecutiveHeader />
 
-      {/* Main Execution Canvas */}
-      <main className="flex-1 flex flex-col overflow-hidden relative">
-        
-        {/* Workspace status bar */}
-        <header className="h-14 border-b border-white/5 flex items-center justify-between px-8 z-10 shrink-0">
-          <div className="flex items-center gap-4 text-xs font-semibold text-secondary-text">
-            <span>Workspace: CS-4120 Compilers</span>
-          </div>
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* 2. Sidebar Navigation */}
+        <Sidebar 
+          activeTab={activeTab} 
+          onTabChange={setActiveTab}
+          onCommandPalette={() => commandPaletteEmitter.dispatchEvent(new Event("open"))}
+        />
+
+        {/* 3. Main Execution Canvas */}
+        <main className="flex-1 flex flex-col overflow-hidden relative">
           
-          {/* Auth indicator */}
-          {!isLoggedIn ? (
-            <form onSubmit={handleConnect} className="flex items-center gap-2">
-              <input 
-                type="text" 
-                placeholder="JWT Access Token..."
-                value={tokenInput}
-                onChange={(e) => setTokenInput(e.target.value)}
-                className="bg-secondary-surface border border-white/5 px-2.5 py-1.5 rounded-lg text-[10px] text-white focus:outline-none focus:border-accent/40 w-44 font-mono transition-colors"
-              />
-              <button 
-                type="submit" 
-                className="px-3 py-1.5 bg-white text-black font-semibold text-[10px] rounded-lg hover:bg-white/90 transition-colors"
-              >
-                Connect Server
-              </button>
-            </form>
-          ) : (
-            <div className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-success" />
-              <span className="text-[10px] text-secondary-text uppercase font-mono tracking-wider">Tauri Client Connected</span>
-            </div>
-          )}
-        </header>
+          {/* Dynamic page container */}
+          <div className="flex-1 overflow-y-auto p-8 relative">
+            {activeTab === "workspace" && <AdaptiveWorkspace />}
+            {activeTab === "intelligence" && <SystemIntelligencePage />}
+            {activeTab === "socratic" && <SocraticPage />}
+            {activeTab === "insights" && <InsightsPage />}
+            {activeTab === "settings" && <SettingsPage />}
+          </div>
 
-        {/* Dynamic page container */}
-        <div className="flex-1 overflow-y-auto p-8">
-          {activeTab === "workspace" && <AdaptiveWorkspace />}
-          {activeTab === "intelligence" && <SystemIntelligencePage />}
-          {activeTab === "socratic" && <SocraticPage />}
-          {activeTab === "insights" && <InsightsPage />}
-          {activeTab === "settings" && <SettingsPage />}
-        </div>
+        </main>
 
-      </main>
+        {/* 4. Global Intervention Feed (Right Rail) */}
+        <GlobalInterventionFeed activeTab={activeTab} />
+      </div>
 
       {/* Global Modals */}
       <AnimatePresence>
+        {showPairing && (
+          <DevicePairingModal 
+            onClose={() => setShowPairing(false)} 
+            onPaired={(deviceInfo) => {
+              console.log("Device paired:", deviceInfo);
+              setShowPairing(false);
+            }} 
+          />
+        )}
+        
         {isOptimizing && <OptimizationVisualizer />}
         
         {showPhoneOverlay && (
@@ -138,6 +123,6 @@ export default function App() {
       </AnimatePresence>
       <CommandPalette onNavigate={setActiveTab} />
       <DemoRunner />
-    </motion.div>
+    </div>
   );
 }

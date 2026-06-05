@@ -120,6 +120,17 @@ export const DEMO_TIMELINE: DemoScene[] = [
   },
   {
     id: 9,
+    title: "The Competitor Comparison",
+    durationMs: 8000,
+    narration: [
+      "Let's look at the difference."
+    ],
+    onEnter: (ctx, demo) => {
+      demo.setOverride({ showCompetitorComparison: true });
+    }
+  },
+  {
+    id: 10,
     title: "Outcome",
     durationMs: 10000,
     narration: [
@@ -134,12 +145,12 @@ export const DEMO_TIMELINE: DemoScene[] = [
     }
   },
   {
-    id: 10,
+    id: 11,
     title: "Final Screen",
     durationMs: 8000,
     narration: [],
     onEnter: (ctx, demo) => {
-      demo.setOverride({ showFinalScreen: true });
+      demo.setOverride({ showFinalScreen: true, showCompetitorComparison: false });
     }
   }
 ];

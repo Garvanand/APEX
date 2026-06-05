@@ -6,7 +6,7 @@ export function useDemoOrchestrator(
   setCognitiveState: (state: CognitiveState) => void,
   setAdaptiveMode: (mode: AdaptiveMode) => void,
   triggerOptimization: (targetMode: AdaptiveMode) => void,
-  addLog: (agent: string, trigger: string, reason: string, action: string, outcome: string) => void
+  addLog: (agent: string, problem: string, reason: string, action: string, outcome: string, impact: string, confidence: number) => void
 ) {
   const [isDemoRunning, setIsDemoRunning] = useState(false);
   const [demoTelemetry, setDemoTelemetry] = useState<TelemetryData | null>(null);
@@ -45,25 +45,29 @@ export function useDemoOrchestrator(
       setShowPhoneOverlay(false);
     });
 
-    // T=2.0s: State Agent detects issue
+    // T=2.0s: State Agent detects issue via iQOO
     schedule(2000, () => {
       addLog(
         "State Agent", 
-        "Distraction spike detected", 
-        "12 context switches in 4 minutes", 
-        "Flagged cognitive state",
-        "State updated to DISTRACTED"
+        "iQOO Phone Detected Attention Drift", 
+        "12 context switches via 120Hz touch sampling", 
+        "Office Kit Bridge Synced State", 
+        "State updated",
+        "Risk +14",
+        92
       );
     });
 
-    // T=3.5s: Deadline approaching & Deadline Sentinel calculates risk
+    // T=3.5s: Deadline Sentinel calculates risk
     schedule(3500, () => {
       addLog(
         "Deadline Sentinel", 
-        "Deadline approaching", 
         "Assignment due in 38 minutes", 
-        "Calculated extreme risk",
-        "Urgency score = 89"
+        "Local CRDT matched syllabus calendar",
+        "Calculated extreme execution risk", 
+        "Urgency score = 89",
+        "Risk +45",
+        98
       );
     });
 
@@ -71,10 +75,12 @@ export function useDemoOrchestrator(
     schedule(5000, () => {
       addLog(
         "Environment Sculptor", 
-        "Intervention required", 
         "High urgency + Distraction", 
-        "Closed 20 tabs & Enabled DND",
-        "Resources loaded"
+        "Desktop OS requested intervention",
+        "Closed 20 tabs & Enabled DND", 
+        "Workspace adapted",
+        "Flow +24",
+        100
       );
     });
 
@@ -82,10 +88,12 @@ export function useDemoOrchestrator(
     schedule(6500, () => {
       addLog(
         "Workspace Core", 
-        "Environment Sculptor triggered optimization", 
+        "Layout fragmented", 
+        "Environment Sculptor locked UI",
         "Enforcing Deep Work environment", 
-        "Morphed layout",
-        "Workspace transition complete"
+        "Workspace transition complete",
+        "Focus +12",
+        100
       );
       triggerOptimization("flow");
     });
@@ -94,10 +102,12 @@ export function useDemoOrchestrator(
     schedule(8000, () => {
       addLog(
         "Peer Radar", 
-        "Relevant group chat message", 
-        "Found context matching current syllabus", 
-        "Surfaced key insight",
-        "Saved 15 minutes of search"
+        "Manual research required", 
+        "Local NLP identified syllabus match",
+        "Surfaced key insight from chat", 
+        "Saved 15 minutes of search",
+        "Time +15m",
+        95
       );
     });
 
@@ -105,10 +115,12 @@ export function useDemoOrchestrator(
     schedule(10000, () => {
       addLog(
         "Socratic Challenger", 
-        "Thesis formulation", 
-        "Testing understanding", 
-        "Injected prompt: 'Defend this approach'",
-        "Student engaged"
+        "Passive reading detected", 
+        "Eye-tracking identified stagnation",
+        "Injected prompt: 'Defend this approach'", 
+        "Student engaged in active recall",
+        "Retention +30",
+        88
       );
     });
 
@@ -126,9 +138,11 @@ export function useDemoOrchestrator(
       addLog(
         "State Agent", 
         "Biometrics normalized", 
-        "Focus sustained", 
-        "Locked state",
-        "Flow State Restored"
+        "iQOO edge model verified Heart Rate drop",
+        "Locked state to FLOW", 
+        "Flow State Restored",
+        "Flow +40",
+        95
       );
     });
     

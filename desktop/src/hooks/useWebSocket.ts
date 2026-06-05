@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { WebSocketEvent } from '../types';
+import { mockEngine } from '../mocks/MockDataEngine';
 
 // ─────────────────────────────────────────────────────────────
 // useWebSocket — connection lifecycle with auto-reconnect
@@ -22,6 +23,7 @@ interface UseWebSocketReturn {
   disconnect: () => void;
   sendMessage: <T>(event: string, payload: T) => void;
   lastMessage: WebSocketEvent | null;
+  isLocalMode: boolean;
 }
 
 const DEFAULT_URL = 'ws://localhost:8000/api/v1/cognitive/stream';
@@ -38,12 +40,14 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 
   const [isConnected, setIsConnected] = useState(false);
   const [lastMessage, setLastMessage] = useState<WebSocketEvent | null>(null);
+  const [isLocalMode, setIsLocalMode] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const retriesRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tokenRef = useRef<string>('');
   const intentionalCloseRef = useRef(false);
+  const isUsingMockRef = useRef(false);
 
   // Sync connection status with optional callback
   const updateConnectionStatus = useCallback(
@@ -74,6 +78,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       }
 
       try {
+        if (import.meta.env.VITE_APEX_DEMO_MODE === "true" || isUsingMockRef.current) {
+          throw new Error("Forcing Mock Engine Fallback");
+        }
+        
         const ws = new WebSocket(`${url}?token=${token}`);
 
         ws.onopen = () => {
@@ -105,12 +113,43 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
             retryTimerRef.current = setTimeout(() => {
               createConnection(tokenRef.current);
             }, delay);
+          } else if (!intentionalCloseRef.current && retriesRef.current >= maxRetries) {
+            // FALLBACK TO MOCK ENGINE
+            console.warn("[useWebSocket] Max retries reached. Falling back to MockDataEngine LOCAL MODE.");
+            isUsingMockRef.current = true;
+            setIsLocalMode(true);
+            createConnection(tokenRef.current);
           }
         };
 
         wsRef.current = ws;
       } catch (err) {
-        console.error('[useWebSocket] Failed to create WebSocket', err);
+        console.warn('[useWebSocket] Switching to MockDataEngine', err);
+        isUsingMockRef.current = true;
+        setIsLocalMode(true);
+        
+        const mockListener = (event: MessageEvent) => {
+          try {
+            const parsed = JSON.parse(event.data) as WebSocketEvent;
+            setLastMessage(parsed);
+          } catch {
+            console.error("Mock parse failed");
+          }
+        };
+        
+        mockEngine.subscribe(mockListener);
+        mockEngine.start();
+        updateConnectionStatus(true); // Faked as connected
+        
+        // We hijack the onclose cleanup reference to also stop the mock
+        wsRef.current = {
+          readyState: WebSocket.OPEN,
+          send: (data: string) => { console.log("[Mock WS Send]", data); },
+          close: () => {
+            mockEngine.unsubscribe(mockListener);
+            mockEngine.stop();
+          }
+        } as unknown as WebSocket;
       }
     },
     [url, maxRetries, baseDelay, updateConnectionStatus],
@@ -155,5 +194,5 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     };
   }, [clearRetryTimer]);
 
-  return { isConnected, connect, disconnect, sendMessage, lastMessage };
+  return { isConnected, connect, disconnect, sendMessage, lastMessage, isLocalMode };
 }

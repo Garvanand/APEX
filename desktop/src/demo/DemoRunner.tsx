@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useDemoController } from './DemoController';
 import { DemoOverlay } from './DemoOverlay';
 import { DemoPlaybackControls } from './DemoPlaybackControls';
+import { DemoRehearsalOverlay } from './DemoRehearsalOverlay';
 
 export const demoRunnerEmitter = new EventTarget();
 
@@ -33,6 +34,7 @@ export function DemoRunner() {
   return (
     <>
       <DemoOverlay />
+      <DemoRehearsalOverlay />
       <DemoPlaybackControls />
     </>
   );

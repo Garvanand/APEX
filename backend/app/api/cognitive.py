@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 import json
 import logging
+from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.core.websocket_manager import manager
@@ -13,6 +14,7 @@ from app.database.models import User, RawSignal, CognitiveState
 from app.schemas.schemas import SignalIngest, CognitiveStateResponse
 from app.services.groq_service import classify_cognitive_state
 from app.services.orchestrator import AgentOrchestrator
+from app.services.state_engine import CognitiveStateEngine
 
 logger = logging.getLogger(__name__)
 
@@ -211,3 +213,32 @@ async def websocket_stream(
     except Exception as e:
         logger.error(f"WebSocket routing error: {str(e)}")
         manager.disconnect(user_id, websocket)
+
+class SimulateStateRequest(BaseModel):
+    state: str
+
+@router.post("/simulate")
+async def simulate_state(req: SimulateStateRequest):
+    """
+    Forces a specific state evaluation and broadcasts it via WebSocket.
+    Useful for demonstrating FLOW -> DISTRACTED transitions without physical sensors.
+    """
+    telemetry = {}
+    if req.state == "FLOW":
+        telemetry = {"typing_cadence": 80, "context_switches_per_min": 1, "idle_duration_sec": 0, "deadline_proximity_hrs": 24}
+    elif req.state == "DISTRACTED":
+        telemetry = {"typing_cadence": 10, "context_switches_per_min": 15, "idle_duration_sec": 30, "deadline_proximity_hrs": 24}
+    elif req.state == "FATIGUED":
+        telemetry = {"typing_cadence": 5, "context_switches_per_min": 2, "idle_duration_sec": 400, "deadline_proximity_hrs": 24}
+    elif req.state == "OVERLOADED":
+        telemetry = {"typing_cadence": 20, "context_switches_per_min": 12, "idle_duration_sec": 0, "deadline_proximity_hrs": 1}
+
+    result = CognitiveStateEngine.evaluate(telemetry)
+    
+    await manager.send_system_event(
+        user_id="global_demo", # Using string broadcast for demo simplicity
+        event_name="STATE_TRANSITION",
+        payload=result
+    )
+    
+    return result

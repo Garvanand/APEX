@@ -2,12 +2,22 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from app.core.config import settings
 
 # Initialize async engine for PostgreSQL connection pooling
+engine_args = {
+    "echo": False,
+    "future": True,
+}
+
+if "sqlite" not in settings.DATABASE_URL:
+    engine_args["pool_size"] = 20
+    engine_args["max_overflow"] = 10
+else:
+    # Optional: check_same_thread=False is needed if sharing sqlite conns across threads,
+    # but aiosqlite handles concurrency via asyncio.
+    pass
+
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=False,
-    future=True,
-    pool_size=20,
-    max_overflow=10
+    **engine_args
 )
 
 # Create session generator
