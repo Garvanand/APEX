@@ -44,6 +44,8 @@ interface AppContextValue {
   // Logging
   logs: AgentLog[];
   addLog: (agent: string, problem: string, reason: string, action: string, outcome: string, impact: string, confidence: number) => void;
+  networkLogs: string[];
+  addNetworkLog: (log: string) => void;
 
   // Auth
   isLoggedIn: boolean;
@@ -66,6 +68,12 @@ interface AppContextValue {
 
   // WebSocket
   isConnected: boolean;
+
+  // Active Execution
+  activeExecution: { agentType: string; status: string; inputData?: string; result?: any } | null;
+
+  // Demo Sync State
+  lastDemoSync: any | null;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -97,6 +105,7 @@ export function AppProvider({ children }: AppProviderProps) {
   const [confidence, setConfidence] = useState(0.92);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [logs, setLogs] = useState<AgentLog[]>([]);
+  const [networkLogs, setNetworkLogs] = useState<string[]>([]);
   
   // ── Engine Interpreted Metrics ─────────────────────────
   const [engineInterpreted, setEngineInterpreted] = useState<InterpretedMetrics | null>(null);
@@ -105,6 +114,8 @@ export function AppProvider({ children }: AppProviderProps) {
   const [showDebrief, setShowDebrief] = useState(false);
   const [isApexEnabled, setIsApexEnabled] = useState(false);
 
+  // ── Active Execution ─────────────────────────────────────
+  const [activeExecution, setActiveExecution] = useState<{ agentType: string; status: string; inputData?: string; result?: any } | null>(null);
 
   // ── Adaptive Enforcement ────────────────────────────────
   useEffect(() => {
@@ -149,17 +160,10 @@ export function AppProvider({ children }: AppProviderProps) {
     setLogs(prev => [entry, ...prev.slice(0, MAX_LOG_ENTRIES - 1)]);
   }, []);
 
-
-  // ── Demo Orchestrator ───────────────────────────────────
-  const { isDemoRunning, demoTelemetry, showPhoneOverlay, runDemoSequence } = useDemoOrchestrator(
-    setCognitiveState,
-    setAdaptiveMode,
-    triggerOptimization,
-    addLog
-  );
-
-  // ── Telemetry ───────────────────────────────────────────
-  const { telemetry, interpreted, setActiveApp } = useTelemetry(cognitiveState, { demoOverride: demoTelemetry });
+  const addNetworkLog = useCallback((log: string) => {
+    const time = new Date().toISOString().split('T')[1].split('.')[0];
+    setNetworkLogs(prev => [`[${time}] ${log}`, ...prev].slice(0, 20));
+  }, []);
 
   // ── WebSocket ───────────────────────────────────────────
   const { isConnected, connect, disconnect, lastMessage, sendMessage, isLocalMode } = useWebSocket({
@@ -175,6 +179,18 @@ export function AppProvider({ children }: AppProviderProps) {
       );
     },
   });
+
+  // ── Demo Orchestrator ───────────────────────────────────
+  const { isDemoRunning, demoTelemetry, showPhoneOverlay, lastDemoSync, runDemoSequence } = useDemoOrchestrator(
+    setCognitiveState,
+    setAdaptiveMode,
+    triggerOptimization,
+    addLog,
+    sendMessage,
+    addNetworkLog
+  );
+
+  const { telemetry, interpreted, setActiveApp } = useTelemetry(cognitiveState, { demoOverride: demoTelemetry });
 
   // ── Initial Mount Auth Persistence ───────────────────────
   useEffect(() => {
@@ -239,6 +255,12 @@ export function AppProvider({ children }: AppProviderProps) {
       setShowDebrief(true);
     } else if (event.event === 'TOGGLE_APEX') {
       setIsApexEnabled(prev => !prev);
+    } else if (event.event === 'COMPUTE_ACTIVE') {
+      setActiveExecution(event.payload as any);
+      setIsApexEnabled(true); // Automatically unlock if phone sends a task
+    } else if (event.event === 'COMPUTE_COMPLETE') {
+      setActiveExecution(event.payload as any);
+      setTimeout(() => setActiveExecution(null), 10000); // Clear after 10 seconds
     }
   }, [lastMessage, addLog, runDemoSequence]);
 
@@ -299,6 +321,8 @@ export function AppProvider({ children }: AppProviderProps) {
       triggerOptimization,
       logs,
       addLog,
+      networkLogs,
+      addNetworkLog,
       isLoggedIn,
       login,
       logout,
@@ -313,6 +337,8 @@ export function AppProvider({ children }: AppProviderProps) {
       setShowDebrief,
       isApexEnabled,
       setIsApexEnabled,
+      activeExecution,
+      lastDemoSync,
     }),
     [
       cognitiveState,
@@ -322,6 +348,8 @@ export function AppProvider({ children }: AppProviderProps) {
       triggerOptimization,
       logs,
       addLog,
+      networkLogs,
+      addNetworkLog,
       isLoggedIn,
       login,
       logout,
@@ -335,6 +363,8 @@ export function AppProvider({ children }: AppProviderProps) {
       setShowDebrief,
       isApexEnabled,
       setIsApexEnabled,
+      activeExecution,
+      lastDemoSync,
     ],
   );
 

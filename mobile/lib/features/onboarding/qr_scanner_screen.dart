@@ -97,8 +97,8 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
                   padding: const EdgeInsets.only(bottom: 40),
                   child: GestureDetector(
                     onTap: () {
-                      // Fallback for emulator testing or if QR fails
-                      AppConfig().serverIp = "192.168.31.2";
+                      // Fallback for emulator testing or if QR fails due to HTTP camera block
+                      AppConfig().serverIp = "172.30.214.101";
                       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AgentHubScreen()));
                     },
                     child: const Text(

@@ -8,6 +8,7 @@ class ApexTheme {
   static const Color textSubtle = Color(0xFF888888);
   static const Color textPrimary = Color(0xFFFFFFFF);
   static const Color iqooYellow = Color(0xFFFFD400);
+  static const Color success = Color(0xFF00D26A);
 
   static ThemeData get theme => ThemeData(
         brightness: Brightness.dark,

@@ -14,9 +14,10 @@ import AgentCollaborationGraph from "../components/AgentCollaborationGraph";
 import MobileSimulatorPage from "../pages/MobileSimulatorPage";
 import { useDemoState } from "../demo/DemoStateStore";
 import WorkspaceStoryEngine from "./WorkspaceStoryEngine";
+import DesktopAgentMonitor from "./DesktopAgentMonitor";
 
 export default function AdaptiveWorkspace() {
-  const { cognitiveState, confidence, logs, addLog, telemetry, interpreted, adaptiveMode, setAdaptiveMode, triggerOptimization, isApexEnabled } = useAppContext();
+  const { cognitiveState, confidence, logs, addLog, telemetry, interpreted, adaptiveMode, setAdaptiveMode, triggerOptimization, isApexEnabled, lastDemoSync } = useAppContext();
   const { override } = useDemoState();
   
   // Right panel states
@@ -242,12 +243,32 @@ export default function AdaptiveWorkspace() {
                   cognitiveState === 'Distracted' ? 'bg-warning' :
                   cognitiveState === 'Fatigued' ? 'bg-accent' : 'bg-danger'
                 }`} />
-                <input
-                  type="text"
-                  className="bg-transparent border-none text-white focus:outline-none text-sm font-medium w-full md:w-96 truncate"
-                  value={activeTask}
-                  onChange={(e) => setActiveTask(e.target.value)}
-                />
+                {lastDemoSync?.step === 3 || lastDemoSync?.step === 4 ? (
+                  <motion.div 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="flex-1 bg-black/60 rounded border border-white/10 px-4 py-2 flex flex-col justify-center"
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <Cpu className="w-4 h-4 text-accent animate-pulse" />
+                      <span className="text-xs font-bold font-mono tracking-widest text-accent uppercase">
+                        {lastDemoSync.step === 3 ? "Peer Radar Active" : "Socratic Challenger Active"}
+                      </span>
+                    </div>
+                    <span className="text-xs font-mono text-white/80 animate-pulse">
+                      {lastDemoSync.step === 3 
+                        ? "Analyzing 42 discussion messages... Building concept graph..." 
+                        : "Processing reading material... Generating validation questions..."}
+                    </span>
+                  </motion.div>
+                ) : (
+                  <input
+                    type="text"
+                    className="bg-transparent border-none text-white focus:outline-none text-sm font-medium w-full md:w-96 truncate"
+                    value={activeTask}
+                    onChange={(e) => setActiveTask(e.target.value)}
+                  />
+                )}
               </div>
               
               <div className="flex items-center gap-4">
@@ -272,6 +293,8 @@ export default function AdaptiveWorkspace() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        <DesktopAgentMonitor />
 
         {/* Main Dynamic Canvas Content */}
         <motion.div layout className="flex-1 overflow-hidden relative">

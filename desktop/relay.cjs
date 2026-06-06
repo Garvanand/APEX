@@ -64,7 +64,7 @@ app.post('/api/v1/agent/execute', async (req, res) => {
             if (client.readyState === 1) {
                 client.send(JSON.stringify({
                     event: "COMPUTE_ACTIVE",
-                    payload: { agentType, status: "Processing" }
+                    payload: { agentType, status: "Processing", inputData }
                 }));
             }
         });
@@ -110,7 +110,7 @@ app.post('/api/v1/agent/execute', async (req, res) => {
             if (client.readyState === 1) {
                 client.send(JSON.stringify({
                     event: "COMPUTE_COMPLETE",
-                    payload: { agentType, result: structuredResult }
+                    payload: { agentType, result: structuredResult, inputData }
                 }));
             }
         });

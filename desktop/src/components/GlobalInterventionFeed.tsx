@@ -1,10 +1,10 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Activity, Sparkles, AlertCircle, CheckCircle2, ChevronRight, ChevronLeft, ShieldAlert, Smartphone, Server, Cpu, Layers, Monitor } from "lucide-react";
+import { Activity, ChevronRight, ChevronLeft, Terminal, CheckCircle2 } from "lucide-react";
 import { useAppContext } from "../context/AppContext";
 
 export default function GlobalInterventionFeed({ activeTab }: { activeTab: string }) {
-  const { logs, adaptiveMode } = useAppContext();
+  const { adaptiveMode, networkLogs, lastDemoSync } = useAppContext();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const isHidden = activeTab === "writing";
@@ -13,16 +13,29 @@ export default function GlobalInterventionFeed({ activeTab }: { activeTab: strin
 
   if (isHidden) return null;
 
+  const currentStep = lastDemoSync?.step ?? -1;
+  const beforeMetrics = lastDemoSync?.before ?? { failureRisk: "89%", estimatedCompletion: "11:58 PM", contextSwitches: "17", timeSaved: "0m" };
+  const afterMetrics = lastDemoSync?.after ?? { failureRisk: "--", estimatedCompletion: "--", contextSwitches: "--", timeSaved: "--" };
+
+  const timelineSteps = [
+    { id: 0, label: "Distraction Detected" },
+    { id: 1, label: "Deadline Risk Calculated" },
+    { id: 2, label: "Environment Adapted" },
+    { id: 3, label: "Critical Insight Surfaced" },
+    { id: 4, label: "Understanding Validated" },
+    { id: 5, label: "Flow Restored" }
+  ];
+
   return (
     <motion.div
       initial={false}
       animate={{ 
-        width: isCollapsed ? 48 : (isMinimal ? 300 : 340),
+        width: isCollapsed ? 48 : (isMinimal ? 340 : 380),
         opacity: 1
       }}
       className="h-full bg-secondary-surface border-l border-white/5 flex flex-col shrink-0 overflow-hidden relative"
     >
-      <div className="p-4 border-b border-white/5 flex items-center justify-between shrink-0">
+      <div className="p-4 border-b border-white/5 flex items-center justify-between shrink-0 bg-black/40">
         <AnimatePresence mode="wait">
           {!isCollapsed && (
             <motion.span 
@@ -32,7 +45,7 @@ export default function GlobalInterventionFeed({ activeTab }: { activeTab: strin
               className="text-xs font-bold font-mono uppercase tracking-widest text-secondary-text flex items-center gap-2"
             >
               <Activity className="w-3.5 h-3.5" />
-              Cognitive Journey
+              Ecosystem Mission Control
             </motion.span>
           )}
         </AnimatePresence>
@@ -47,116 +60,91 @@ export default function GlobalInterventionFeed({ activeTab }: { activeTab: strin
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 scrollbar-thin relative">
-        {/* CAUSALITY TRACE */}
+      <div className="flex-1 overflow-y-auto scrollbar-thin relative flex flex-col">
         {!isCollapsed && (
-          <div className="mb-6 p-3 bg-black/30 border border-white/5 rounded-lg overflow-hidden">
-            <span className="text-[9px] uppercase font-bold text-white/40 tracking-widest block mb-3">System Causality</span>
-            <div className="flex items-center justify-between relative">
-              <div className="absolute top-1/2 left-4 right-4 h-px bg-white/10 -translate-y-1/2 z-0" />
-              
-              <div className="flex flex-col items-center z-10 bg-secondary-surface px-1">
-                <Smartphone className="w-3.5 h-3.5 text-accent mb-1" />
-                <span className="text-[8px] font-mono text-white/50">iQOO</span>
+          <>
+            {/* 1. Developer Console (Verification) */}
+            <div className="p-4 border-b border-white/5">
+              <div className="flex items-center gap-2 mb-2">
+                <Terminal className="w-3 h-3 text-white/40" />
+                <span className="text-[10px] uppercase font-bold text-white/40 tracking-widest">Network Verification</span>
               </div>
-              <div className="flex flex-col items-center z-10 bg-secondary-surface px-1">
-                <Server className="w-3.5 h-3.5 text-success mb-1" />
-                <span className="text-[8px] font-mono text-white/50">KIT</span>
-              </div>
-              <div className="flex flex-col items-center z-10 bg-secondary-surface px-1">
-                <Cpu className="w-3.5 h-3.5 text-warning mb-1" />
-                <span className="text-[8px] font-mono text-white/50">AGENT</span>
-              </div>
-              <div className="flex flex-col items-center z-10 bg-secondary-surface px-1">
-                <Layers className="w-3.5 h-3.5 text-blue-400 mb-1" />
-                <span className="text-[8px] font-mono text-white/50">SCULPT</span>
-              </div>
-              <div className="flex flex-col items-center z-10 bg-secondary-surface px-1">
-                <Monitor className="w-3.5 h-3.5 text-purple-400 mb-1" />
-                <span className="text-[8px] font-mono text-white/50">VIEW</span>
+              <div className="bg-black/60 rounded p-2 h-24 overflow-y-auto font-mono text-[9px] text-green-400/80 leading-relaxed break-all">
+                {networkLogs.length === 0 ? "Awaiting Office Kit events..." : null}
+                {networkLogs.map((log, i) => (
+                  <div key={i} className="mb-1">{log}</div>
+                ))}
               </div>
             </div>
-          </div>
-        )}
 
-        {/* Continuous Timeline Line */}
-        {!isCollapsed && logs.length > 0 && (
-          <div className="absolute left-6 top-[120px] bottom-6 w-0.5 bg-white/5" />
-        )}
-
-        <AnimatePresence>
-          {logs.map((log, index) => {
-            const isFirst = index === 0;
-            return (
-              <motion.div
-                key={log.id}
-                initial={{ opacity: 0, x: 20, height: 0 }}
-                animate={{ opacity: 1, x: 0, height: "auto" }}
-                className="relative mb-6 last:mb-0"
-              >
-                {!isCollapsed ? (
-                  <div className={`pl-8 relative ${isFirst ? 'opacity-100' : 'opacity-60'}`}>
-                    {/* Timeline Dot */}
-                    <div className={`absolute left-[-17px] top-1.5 w-2 h-2 rounded-full ring-4 ring-secondary-surface ${
-                      isFirst ? 'bg-accent' : 'bg-white/20'
-                    }`} />
-                    
-                    {/* Timestamp & Agent */}
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-mono text-secondary-text">{log.time}</span>
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">{log.agent}</span>
-                    </div>
-
-                    {/* Timeline Card */}
-                    <div className={`p-3 rounded-lg border ${
-                      isFirst ? "bg-black/40 border-white/10 shadow-lg" : "bg-black/20 border-white/5"
-                    }`}>
-                      {/* SENSE */}
-                      {log.problem && (
-                        <div className="mb-2">
-                          <span className="text-[9px] uppercase font-bold text-danger/80 tracking-widest block mb-0.5">Sense</span>
-                          <span className="text-xs text-white/90 leading-snug">{log.problem}</span>
-                        </div>
-                      )}
-
-                      {/* REASON */}
-                      {log.reason && (
-                        <div className="mb-2">
-                          <span className="text-[9px] uppercase font-bold text-warning/80 tracking-widest block mb-0.5">Reason</span>
-                          <span className="text-xs text-white/90 leading-snug">{log.reason}</span>
-                        </div>
-                      )}
-                      
-                      {/* ADAPT */}
-                      <div className="mb-2">
-                        <span className="text-[9px] uppercase font-bold text-accent/80 tracking-widest block mb-0.5">Adapt</span>
-                        <span className="text-xs text-white/90 leading-snug">{log.action}</span>
-                      </div>
-
-                      {/* IMPROVE */}
-                      <div className="mt-3 pt-2 border-t border-white/5 flex items-center justify-between">
-                        <div>
-                          <span className="text-[9px] uppercase font-bold text-success tracking-widest block mb-0.5">Improve</span>
-                          <span className="text-[10px] text-white/80 font-mono">{log.outcome}</span>
-                        </div>
-                        {log.impact && (
-                          <span className="text-[10px] font-bold px-2 py-1 bg-success/10 text-success rounded border border-success/20">
-                            {log.impact}
-                          </span>
-                        )}
-                      </div>
-                    </div>
+            {/* 2. Outcome Board */}
+            <div className="p-4 border-b border-white/5 bg-black/20">
+              <span className="text-[10px] uppercase font-bold text-white/40 tracking-widest block mb-4">Outcome Board</span>
+              
+              <div className="grid grid-cols-2 gap-4">
+                {/* Before */}
+                <div className="space-y-3 p-3 bg-danger/5 border border-danger/20 rounded-lg">
+                  <span className="text-[9px] uppercase font-bold text-danger/80 text-center block tracking-widest">Before Intervention</span>
+                  <div>
+                    <span className="text-[9px] text-white/50 block">Failure Risk</span>
+                    <span className="text-xs font-bold text-white font-mono">{beforeMetrics.failureRisk}</span>
                   </div>
-                ) : (
-                  /* Collapsed Icon View */
-                  <div className="flex justify-center mb-4" title={`${log.agent}: ${log.action}`}>
-                    <div className="w-2 h-2 rounded-full bg-white/20" />
+                  <div>
+                    <span className="text-[9px] text-white/50 block">Context Switches</span>
+                    <span className="text-xs font-bold text-white font-mono">{beforeMetrics.contextSwitches}</span>
                   </div>
-                )}
-              </motion.div>
-            );
-          })}
-        </AnimatePresence>
+                  <div>
+                    <span className="text-[9px] text-white/50 block">Est. Completion</span>
+                    <span className="text-[10px] font-bold text-white font-mono">{beforeMetrics.estimatedCompletion}</span>
+                  </div>
+                </div>
+
+                {/* After */}
+                <div className="space-y-3 p-3 bg-success/5 border border-success/20 rounded-lg">
+                  <span className="text-[9px] uppercase font-bold text-success/80 text-center block tracking-widest">After Intervention</span>
+                  <div>
+                    <span className="text-[9px] text-white/50 block">Failure Risk</span>
+                    <span className="text-xs font-bold text-success font-mono">{afterMetrics.failureRisk}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-white/50 block">Time Saved</span>
+                    <span className="text-xs font-bold text-success font-mono">{afterMetrics.timeSaved}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-white/50 block">Est. Completion</span>
+                    <span className="text-[10px] font-bold text-success font-mono">{afterMetrics.estimatedCompletion}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Mission Timeline */}
+            <div className="p-4 flex-1">
+              <span className="text-[10px] uppercase font-bold text-white/40 tracking-widest block mb-4">Execution Timeline</span>
+              <div className="relative pl-2">
+                <div className="absolute left-[11px] top-2 bottom-2 w-px bg-white/10" />
+                {timelineSteps.map((step) => {
+                  const isCompleted = currentStep > step.id;
+                  const isActive = currentStep === step.id;
+                  const isFuture = currentStep < step.id;
+
+                  return (
+                    <div key={step.id} className={`relative flex items-center gap-4 mb-4 last:mb-0 ${isFuture ? 'opacity-30' : 'opacity-100'}`}>
+                      <div className={`relative z-10 w-5 h-5 rounded-full flex items-center justify-center bg-secondary-surface ring-4 ring-secondary-surface
+                        ${isCompleted ? 'text-success' : isActive ? 'text-accent' : 'text-white/20'}`}
+                      >
+                        {isCompleted ? <CheckCircle2 className="w-3.5 h-3.5" /> : <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-accent animate-pulse' : 'bg-white/20'}`} />}
+                      </div>
+                      <span className={`text-xs font-bold font-mono tracking-tight ${isCompleted ? 'text-white/60' : isActive ? 'text-accent' : 'text-white/40'}`}>
+                        {step.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </motion.div>
   );
