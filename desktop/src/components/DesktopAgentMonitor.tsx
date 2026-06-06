@@ -1,7 +1,71 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Cpu, Zap, Activity, CheckCircle2, Server, Smartphone, Globe } from 'lucide-react';
+import { Cpu, Zap, Activity, CheckCircle2, Server, Smartphone, Globe, BookOpen, Calendar, DollarSign, Mail, List } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+
+const PrettyAgentOutput = ({ agentType, result }: { agentType: string, result: any }) => {
+  if (!result || typeof result !== 'object') {
+    return <div className="text-white/60 text-xs italic">No structured data extracted.</div>;
+  }
+
+  const renderIcon = () => {
+    switch (agentType.toLowerCase()) {
+      case 'study': return <BookOpen className="w-4 h-4 text-purple-400" />;
+      case 'schedule': return <Calendar className="w-4 h-4 text-blue-400" />;
+      case 'expense': return <DollarSign className="w-4 h-4 text-green-400" />;
+      case 'content': return <Mail className="w-4 h-4 text-orange-400" />;
+      default: return <List className="w-4 h-4 text-accent" />;
+    }
+  };
+
+  const extractValues = (obj: any): { key: string; value: string }[] => {
+    const pairs: { key: string; value: string }[] = [];
+    for (const [key, val] of Object.entries(obj)) {
+      if (Array.isArray(val)) {
+        pairs.push({ key, value: `[${val.length} items]` });
+      } else if (typeof val === 'object' && val !== null) {
+        pairs.push({ key, value: '{...}' });
+      } else {
+        pairs.push({ key, value: String(val) });
+      }
+    }
+    return pairs;
+  };
+
+  let iterableData = Array.isArray(result) ? result : [result];
+  if (!Array.isArray(result)) {
+    // If it's a wrapper object like { "events": [...] }, extract the array
+    const keys = Object.keys(result);
+    if (keys.length === 1 && Array.isArray(result[keys[0]])) {
+      iterableData = result[keys[0]];
+    } else if (result.items && Array.isArray(result.items)) {
+      iterableData = result.items;
+    } else if (result.flashcards && Array.isArray(result.flashcards)) {
+      iterableData = result.flashcards;
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar mt-2">
+      {iterableData.map((item, idx) => (
+        <div key={idx} className="bg-white/5 border border-white/10 rounded-lg p-3">
+          <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/10">
+            {renderIcon()}
+            <span className="text-xs font-semibold text-white/90 capitalize">{agentType} Entry</span>
+          </div>
+          <div className="space-y-1.5">
+            {extractValues(item).map((pair, i) => (
+              <div key={i} className="flex items-start justify-between gap-3 text-[11px]">
+                <span className="text-white/40 uppercase tracking-wider font-sans">{pair.key}</span>
+                <span className="text-white/90 text-right break-words font-sans max-w-[65%]">{pair.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
 
 export default function DesktopAgentMonitor() {
   const { activeExecution, isConnected } = useAppContext();
@@ -91,9 +155,7 @@ export default function DesktopAgentMonitor() {
             className="pt-2 border-t border-white/10"
           >
              <span className="text-[10px] text-white/40 uppercase block mb-1">Structured Result</span>
-             <div className="bg-success/5 border border-success/20 rounded p-2 text-[10px] text-success font-mono max-h-24 overflow-y-auto">
-               {JSON.stringify(activeExecution.result, null, 2)}
-             </div>
+             <PrettyAgentOutput agentType={activeExecution.agentType} result={activeExecution.result} />
           </motion.div>
         )}
       </div>

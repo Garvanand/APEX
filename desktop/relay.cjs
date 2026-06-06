@@ -3,6 +3,12 @@ const { WebSocketServer } = require('ws');
 const http = require('http');
 const path = require('path');
 const os = require('os');
+const OpenAI = require('openai');
+
+const openai = new OpenAI({
+    baseURL: "https://openrouter.ai/api/v1",
+    apiKey: "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",
+});
 
 const app = express();
 
@@ -69,38 +75,53 @@ app.post('/api/v1/agent/execute', async (req, res) => {
             }
         });
 
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-                "Content-Type": "application/json",
-                "HTTP-Referer": "http://localhost:8080",
-                "X-Title": "APEX AgentOS"
-            },
-            body: JSON.stringify({
-                model: "google/gemini-2.5-flash-pro",
-                messages: [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: inputData }
-                ],
-                response_format: { type: "json_object" }
-            })
+        const enforcedPrompt = `${systemPrompt}\n\nIMPORTANT: You MUST respond ONLY with a valid, raw JSON object. Do NOT include markdown blocks (like \`\`\`json), do NOT include backticks, and do NOT include any conversational text like "Here is the JSON". Your entire output must be purely valid JSON that can be parsed by JSON.parse().`;
+
+        const response = await openai.chat.completions.create({
+            model: "minimax/minimax-m3",
+            messages: [
+                { role: "system", content: enforcedPrompt },
+                { role: "user", content: inputData }
+            ],
+            response_format: { type: "json_object" }
         });
 
-        const data = await response.json();
-        
-        if (!response.ok) {
-             throw new Error(data.error?.message || "LLM request failed");
-        }
-
-        const rawContent = data.choices[0].message.content;
+        const rawContent = response.choices[0].message.content;
         let structuredResult;
         try {
             structuredResult = JSON.parse(rawContent);
         } catch(e) {
-            // Strip markdown formatting if any and try again
-            const stripped = rawContent.replace(/```json/g, '').replace(/```/g, '').trim();
-            structuredResult = JSON.parse(stripped);
+            try {
+                // Strip markdown formatting if any
+                let stripped = rawContent.replace(/```json/ig, '').replace(/```/g, '').trim();
+                
+                // Extract only the JSON portion if there is conversational filler
+                const firstBrace = stripped.indexOf('{');
+                const lastBrace = stripped.lastIndexOf('}');
+                const firstBracket = stripped.indexOf('[');
+                const lastBracket = stripped.lastIndexOf(']');
+                
+                let start = -1;
+                let end = -1;
+                
+                if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+                    start = firstBrace;
+                    end = lastBrace;
+                } else if (firstBracket !== -1) {
+                    start = firstBracket;
+                    end = lastBracket;
+                }
+                
+                if (start !== -1 && end !== -1 && end >= start) {
+                    stripped = stripped.substring(start, end + 1);
+                }
+                
+                structuredResult = JSON.parse(stripped);
+            } catch (fallbackErr) {
+                console.error(`[Relay-Muscle] Failed to parse JSON. Raw content:`, rawContent);
+                // Return a structured error object that still looks like JSON to the UI
+                structuredResult = { error: "Failed to parse JSON", raw_output: rawContent };
+            }
         }
 
         console.log(`[Relay-Muscle] Execution complete for ${agentType}.`);

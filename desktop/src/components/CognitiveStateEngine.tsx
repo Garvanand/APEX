@@ -225,12 +225,41 @@ function TransitionBurst({ color }: { color: string }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function CognitiveStateEngine() {
-  const { cognitiveState, confidence } = useAppContext();
+  const { cognitiveState, confidence, mobileTelemetry } = useAppContext();
   const config = STATE_CONFIGS[cognitiveState];
   const confidencePercent = Math.round(confidence * 100);
   const prevStateRef = useRef<CognitiveState | null>(null);
   const stateChanged = prevStateRef.current !== null && prevStateRef.current !== cognitiveState;
   prevStateRef.current = cognitiveState;
+
+  const movementVal = mobileTelemetry ? (Math.abs(mobileTelemetry.accelX) + Math.abs(mobileTelemetry.accelY) + Math.abs(mobileTelemetry.accelZ - 9.8)) : 0;
+  
+  const activeEvidence = mobileTelemetry ? [
+    { 
+      label: "Device Movement", 
+      value: movementVal > 5.0 ? "Erratic" : movementVal > 2.0 ? "Fidgeting" : "Stable",
+      status: (movementVal > 5.0 ? "negative" : movementVal > 2.0 ? "neutral" : "positive") as EvidenceStatus,
+      icon: Activity
+    },
+    {
+      label: "Touch Density",
+      value: mobileTelemetry.touchBurstCount > 20 ? "High Burst" : mobileTelemetry.touchBurstCount > 0 ? "Moderate" : "Low",
+      status: (mobileTelemetry.touchBurstCount > 20 ? "negative" : "positive") as EvidenceStatus,
+      icon: Keyboard
+    },
+    {
+      label: "Context Switching",
+      value: mobileTelemetry.backgroundTransitions > 3 ? "High" : "Stable",
+      status: (mobileTelemetry.backgroundTransitions > 3 ? "negative" : "positive") as EvidenceStatus,
+      icon: Shuffle
+    },
+    {
+      label: "Calculated Fatigue",
+      value: `${mobileTelemetry.fatigueScore}%`,
+      status: (mobileTelemetry.fatigueScore > 60 ? "negative" : "neutral") as EvidenceStatus,
+      icon: Brain
+    }
+  ] : config.evidence;
 
   return (
     <div
@@ -398,11 +427,18 @@ export default function CognitiveStateEngine() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.35 }}
           >
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#A5A5A5] mb-3">
-              Supporting Evidence
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#A5A5A5] mb-3 flex items-center gap-2">
+              {mobileTelemetry ? (
+                <>
+                  <Activity className="w-3 h-3 text-emerald-400 animate-pulse" />
+                  <span className="text-emerald-400">Live Hardware Telemetry</span>
+                </>
+              ) : (
+                "Simulated Evidence (Demo Mode)"
+              )}
             </p>
 
-            {config.evidence.map((item, i) => {
+            {activeEvidence.map((item, i) => {
               const Icon = item.icon;
               return (
                 <motion.div

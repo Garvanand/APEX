@@ -5,6 +5,7 @@
 Thumbs.db
 *.db
 *.log
+.env
 
 # IDE & Editor configurations
 .vscode/

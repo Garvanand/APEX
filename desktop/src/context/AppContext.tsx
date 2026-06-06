@@ -17,6 +17,17 @@ import type {
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useTelemetry, InterpretedMetrics } from '../hooks/useTelemetry';
 import { useDemoOrchestrator } from '../hooks/useDemoOrchestrator';
+import { generateSocraticSupport } from '../lib/openrouter';
+
+export interface MobileTelemetry {
+  accelX: number;
+  accelY: number;
+  accelZ: number;
+  touchBurstCount: number;
+  backgroundTransitions: number;
+  distractionScore: number;
+  fatigueScore: number;
+}
 
 // ─────────────────────────────────────────────────────────────
 // AppContext — global state provider
@@ -74,6 +85,9 @@ interface AppContextValue {
 
   // Demo Sync State
   lastDemoSync: any | null;
+
+  // Real Sensor Data
+  mobileTelemetry: MobileTelemetry | null;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -109,6 +123,9 @@ export function AppProvider({ children }: AppProviderProps) {
   
   // ── Engine Interpreted Metrics ─────────────────────────
   const [engineInterpreted, setEngineInterpreted] = useState<InterpretedMetrics | null>(null);
+
+  // ── Real Mobile Telemetry ──────────────────────────────
+  const [mobileTelemetry, setMobileTelemetry] = useState<MobileTelemetry | null>(null);
 
   // ── Remote Control ───────────────────────────────────────
   const [showDebrief, setShowDebrief] = useState(false);
@@ -261,8 +278,80 @@ export function AppProvider({ children }: AppProviderProps) {
     } else if (event.event === 'COMPUTE_COMPLETE') {
       setActiveExecution(event.payload as any);
       setTimeout(() => setActiveExecution(null), 10000); // Clear after 10 seconds
+    } else if (event.event === 'QUICK_CAPTURE' && event.payload) {
+      const { text } = event.payload as any;
+      addLog(
+        'Environment Sculptor',
+        'Quick capture received from phone',
+        `Thought synced: "${text}"`,
+        'Saved to persistent scratchpad',
+        'Phone flow unblocked',
+        'Flow +15',
+        95
+      );
+    } else if (event.event === 'HELP_REQUEST') {
+      addLog(
+        'Socratic Challenger',
+        'Help requested from lockdown screen',
+        'Student stuck on current task',
+        'Initiating Socratic Support Mode',
+        'Retrieving context for "CS-4120 Compilers"',
+        'Recovery +25',
+        100
+      );
+      
+      // Trigger LLM to fetch actual socratic advice
+      setActiveExecution({
+        agentType: "Socratic Challenger",
+        status: "Processing",
+        inputData: "I'm stuck on CS-4120 Compilers Parsing Algorithms"
+      });
+      
+      generateSocraticSupport("CS-4120 Compilers Parsing Algorithms").then((response) => {
+        setActiveExecution({
+          agentType: "Socratic Challenger",
+          status: "Complete",
+          inputData: "I'm stuck on CS-4120 Compilers Parsing Algorithms",
+          result: { response }
+        });
+        
+        // Hide it after 15 seconds
+        setTimeout(() => {
+          setActiveExecution(null);
+        }, 15000);
+      });
+      
+    } else if (event.event === 'COGNITIVE_STATE_REALTIME' && event.payload) {
+      const payload = event.payload as any;
+      if (payload.device_source === 'iqoo-mobile-client') {
+        const distScore = payload.distractionScore || 0;
+        let newState: CognitiveState = 'Flow';
+        if (distScore > 75) {
+          newState = 'Overloaded';
+        } else if (distScore > 50) {
+          newState = 'Distracted';
+        } else if (payload.fatigueScore > 60) {
+          newState = 'Fatigued';
+        }
+        
+        // Only update if it actually changed to avoid massive re-renders
+        setCognitiveState(prev => prev !== newState ? newState : prev);
+        
+        const newConf = (payload.flowConfidence || 0) / 100;
+        setConfidence(prev => Math.abs(prev - newConf) > 0.05 ? newConf : prev);
+
+        setMobileTelemetry({
+           accelX: payload.accelX,
+           accelY: payload.accelY,
+           accelZ: payload.accelZ,
+           touchBurstCount: payload.touchBurstCount,
+           backgroundTransitions: payload.backgroundTransitions,
+           distractionScore: payload.distractionScore,
+           fatigueScore: payload.fatigueScore
+        });
+      }
     }
-  }, [lastMessage, addLog, runDemoSequence]);
+  }, [lastMessage, addLog, runDemoSequence, isConnected, sendMessage]);
 
   // ── Broadcast telemetry to server ───────────────────────
   useEffect(() => {
@@ -328,43 +417,42 @@ export function AppProvider({ children }: AppProviderProps) {
       logout,
       isLocalMode,
       telemetry,
-      interpreted: engineInterpreted || interpreted,
+      interpreted: engineInterpreted ?? interpreted,
       setActiveApp,
-      isConnected,
-      runDemoSequence,
-      showPhoneOverlay,
       showDebrief,
       setShowDebrief,
       isApexEnabled,
       setIsApexEnabled,
+      isConnected,
       activeExecution,
       lastDemoSync,
+      mobileTelemetry,
+      runDemoSequence,
+      showPhoneOverlay,
     }),
     [
       cognitiveState,
       confidence,
       adaptiveMode,
       isOptimizing,
-      triggerOptimization,
       logs,
-      addLog,
       networkLogs,
-      addNetworkLog,
       isLoggedIn,
       login,
+      isLocalMode,
       logout,
-      telemetry,
-      interpreted,
-      setActiveApp,
-      isConnected,
       runDemoSequence,
       showPhoneOverlay,
+      telemetry,
+      engineInterpreted,
+      interpreted,
+      setActiveApp,
       showDebrief,
-      setShowDebrief,
       isApexEnabled,
-      setIsApexEnabled,
+      isConnected,
       activeExecution,
       lastDemoSync,
+      mobileTelemetry,
     ],
   );
 

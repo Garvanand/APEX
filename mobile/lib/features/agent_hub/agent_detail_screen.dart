@@ -147,10 +147,74 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
 
   Widget _buildResultUI() {
     if (_result == null) return const SizedBox.shrink();
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: ApexTheme.darkGray, borderRadius: BorderRadius.circular(12)),
-      child: Text(jsonEncode(_result), style: const TextStyle(fontFamily: 'monospace', color: ApexTheme.iqooYellow)),
+
+    List<dynamic> iterableData = [];
+    if (_result is List) {
+      iterableData = _result as List;
+    } else if (_result is Map) {
+      final map = _result as Map;
+      if (map.keys.length == 1 && map.values.first is List) {
+        iterableData = map.values.first as List;
+      } else if (map.containsKey('items') && map['items'] is List) {
+        iterableData = map['items'] as List;
+      } else if (map.containsKey('flashcards') && map['flashcards'] is List) {
+        iterableData = map['flashcards'] as List;
+      } else {
+        iterableData = [map];
+      }
+    } else {
+      iterableData = [_result];
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text("STRUCTURED RESULT", style: TextStyle(color: Colors.white54, fontSize: 10, letterSpacing: 1.5, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 16),
+        ...iterableData.map((item) {
+          if (item is! Map) return const SizedBox.shrink();
+          return Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.05),
+              border: Border.all(color: Colors.white.withOpacity(0.1)),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.auto_awesome, color: widget.agent["color"], size: 16),
+                    const SizedBox(width: 8),
+                    Text("${widget.agent["name"].toUpperCase()} ENTRY", style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                ...item.entries.map((e) {
+                  String valStr = e.value is List ? "[${(e.value as List).length} items]" : e.value.toString();
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8.0),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 80,
+                          child: Text(e.key.toString().toUpperCase(), style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold)),
+                        ),
+                        Expanded(
+                          child: Text(valStr, style: const TextStyle(color: Colors.white, fontSize: 12)),
+                        )
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ),
+          );
+        }),
+      ],
     );
   }
 

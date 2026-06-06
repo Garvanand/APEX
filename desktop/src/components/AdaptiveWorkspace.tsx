@@ -206,14 +206,15 @@ export default function AdaptiveWorkspace() {
                     : "Cumulative focus logs suggest a 5-minute offline screen disconnect. Cognitive resources depleted."}
                 </div>
               </div>
-              {cognitiveState === "Overloaded" && (
-                <button
-                  onClick={() => { setAdaptiveMode("flow"); }}
-                  className="px-4 py-2 bg-danger hover:bg-danger/80 text-black text-xs font-bold rounded-lg transition-colors"
-                >
-                  Deactivate Triage
-                </button>
-              )}
+              <button
+                onClick={() => { 
+                  setAdaptiveMode("flow");
+                  setCognitiveState("Flow");
+                }}
+                className={`px-4 py-2 ${cognitiveState === "Overloaded" ? "bg-danger hover:bg-danger/80" : "bg-warning hover:bg-warning/80"} text-black text-xs font-bold rounded-lg transition-colors`}
+              >
+                {cognitiveState === "Overloaded" ? "Deactivate Triage" : "Restore Flow"}
+              </button>
             </motion.div>
           )}
         </AnimatePresence>
