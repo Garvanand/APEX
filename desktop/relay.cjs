@@ -57,7 +57,7 @@ app.post('/api/v1/cognitive/simulate', (req, res) => {
 });
 
 // OPENROUTER LLM MUSCLE ENDPOINT
-const OPENROUTER_API_KEY = "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";
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
 app.post('/api/v1/agent/execute', async (req, res) => {
     try {
