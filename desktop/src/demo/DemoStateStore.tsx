@@ -16,6 +16,9 @@ export interface DemoStateOverride {
   finalRisk?: number;
   finalProgress?: number;
   showFinalScreen?: boolean;
+  showCompetitorComparison?: boolean;
+  showBridgeAnimation?: boolean;
+  bridgeMessage?: string;
 }
 
 interface DemoStateContextValue {

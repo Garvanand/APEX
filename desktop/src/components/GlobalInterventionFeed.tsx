@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Activity, Sparkles, AlertCircle, CheckCircle2, ChevronRight, ChevronLeft, ShieldAlert } from "lucide-react";
+import { Activity, Sparkles, AlertCircle, CheckCircle2, ChevronRight, ChevronLeft, ShieldAlert, Smartphone, Server, Cpu, Layers, Monitor } from "lucide-react";
 import { useAppContext } from "../context/AppContext";
 
 export default function GlobalInterventionFeed({ activeTab }: { activeTab: string }) {
@@ -48,9 +48,40 @@ export default function GlobalInterventionFeed({ activeTab }: { activeTab: strin
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 scrollbar-thin relative">
+        {/* CAUSALITY TRACE */}
+        {!isCollapsed && (
+          <div className="mb-6 p-3 bg-black/30 border border-white/5 rounded-lg overflow-hidden">
+            <span className="text-[9px] uppercase font-bold text-white/40 tracking-widest block mb-3">System Causality</span>
+            <div className="flex items-center justify-between relative">
+              <div className="absolute top-1/2 left-4 right-4 h-px bg-white/10 -translate-y-1/2 z-0" />
+              
+              <div className="flex flex-col items-center z-10 bg-secondary-surface px-1">
+                <Smartphone className="w-3.5 h-3.5 text-accent mb-1" />
+                <span className="text-[8px] font-mono text-white/50">iQOO</span>
+              </div>
+              <div className="flex flex-col items-center z-10 bg-secondary-surface px-1">
+                <Server className="w-3.5 h-3.5 text-success mb-1" />
+                <span className="text-[8px] font-mono text-white/50">KIT</span>
+              </div>
+              <div className="flex flex-col items-center z-10 bg-secondary-surface px-1">
+                <Cpu className="w-3.5 h-3.5 text-warning mb-1" />
+                <span className="text-[8px] font-mono text-white/50">AGENT</span>
+              </div>
+              <div className="flex flex-col items-center z-10 bg-secondary-surface px-1">
+                <Layers className="w-3.5 h-3.5 text-blue-400 mb-1" />
+                <span className="text-[8px] font-mono text-white/50">SCULPT</span>
+              </div>
+              <div className="flex flex-col items-center z-10 bg-secondary-surface px-1">
+                <Monitor className="w-3.5 h-3.5 text-purple-400 mb-1" />
+                <span className="text-[8px] font-mono text-white/50">VIEW</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Continuous Timeline Line */}
         {!isCollapsed && logs.length > 0 && (
-          <div className="absolute left-6 top-6 bottom-6 w-0.5 bg-white/5" />
+          <div className="absolute left-6 top-[120px] bottom-6 w-0.5 bg-white/5" />
         )}
 
         <AnimatePresence>

@@ -3,6 +3,7 @@ import { useDemoController } from './DemoController';
 import { DemoOverlay } from './DemoOverlay';
 import { DemoPlaybackControls } from './DemoPlaybackControls';
 import { DemoRehearsalOverlay } from './DemoRehearsalOverlay';
+import { BridgeOverlay } from '../components/BridgeOverlay';
 
 export const demoRunnerEmitter = new EventTarget();
 
@@ -34,6 +35,7 @@ export function DemoRunner() {
   return (
     <>
       <DemoOverlay />
+      <BridgeOverlay />
       <DemoRehearsalOverlay />
       <DemoPlaybackControls />
     </>

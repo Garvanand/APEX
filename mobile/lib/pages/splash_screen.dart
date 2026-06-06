@@ -38,7 +38,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 
   void _startHandshake() async {
-    // Simulate P2P Bridge Connection Loop
+    // Simulate Office Kit Connection Loop
     await Future.delayed(const Duration(milliseconds: 1500));
     if (mounted) {
       setState(() {
@@ -48,7 +48,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     await Future.delayed(const Duration(milliseconds: 1500));
     if (mounted) {
       setState(() {
-        _statusText = "12ms P2P Bridge Active";
+        _statusText = "12ms Office Kit Synced";
         _isConnecting = false;
       });
     }

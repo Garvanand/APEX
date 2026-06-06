@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AppWindow, Bell, LayoutGrid, Activity, CheckCircle2, Shield, FileText, Target, Zap, Clock, Trash2, Webhook } from "lucide-react";
 import { useAppContext } from "../context/AppContext";
-import { open } from '@tauri-apps/plugin-opener';
 
 export default function OptimizationVisualizer() {
   const { adaptiveMode, logs, addLog } = useAppContext();
@@ -50,9 +49,9 @@ export default function OptimizationVisualizer() {
         } else if (plan[i].label.includes("DND")) {
           setSuppressedNotifs(8);
         } else if (plan[i].label.includes("Canvas")) {
-          try { await open("https://canvas.instructure.com"); } catch (e) { console.error(e) }
+          try { window.open("https://canvas.instructure.com", "_blank"); } catch (e) { console.error(e) }
         } else if (plan[i].label.includes("PDF")) {
-          try { await open("https://arxiv.org/pdf/1706.03762.pdf"); } catch (e) { console.error(e) }
+          try { window.open("https://arxiv.org/pdf/1706.03762.pdf", "_blank"); } catch (e) { console.error(e) }
         }
         
         setInterventions(prev => prev.map((item, idx) => idx === i ? { ...item, status: 'done' } : item));

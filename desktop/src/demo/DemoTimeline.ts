@@ -36,6 +36,17 @@ export const DEMO_TIMELINE: DemoScene[] = [
   },
   {
     id: 3,
+    title: "iQOO Sensor Bridge Synchronizes",
+    durationMs: 4000,
+    narration: [
+      "The sensor payload is securely transmitted over the local network via iQOO Office Kit."
+    ],
+    onEnter: (ctx, demo) => {
+      demo.setOverride({ showBridgeAnimation: true, bridgeMessage: "Transmitting 120Hz Touch Vectors" });
+    }
+  },
+  {
+    id: 4,
     title: "Deadline Sentinel Activates",
     durationMs: 8000,
     narration: [
@@ -56,15 +67,15 @@ export const DEMO_TIMELINE: DemoScene[] = [
       "It actively reshapes the environment."
     ],
     onEnter: (ctx) => {
-      ctx.addLog("Environment Sculptor", "Intervention required", "High urgency + Distraction", "Closed 20 tabs & Enabled DND", "Resources loaded");
+      ctx.addLog("Environment Sculptor", "High urgency + Distraction", "Desktop OS requested intervention", "Closed 20 tabs & Enabled DND", "Resources loaded");
     },
     onUpdate: (p, ctx, demo) => {
       const tabs = Math.max(4, Math.floor(20 - (p * 16)));
-      demo.setOverride({ tabsOpen: tabs, dndEnabled: true, workspaceOptimized: p > 0.8 });
+      demo.setOverride({ tabsOpen: tabs, dndEnabled: true, workspaceOptimized: p > 0.8, showBridgeAnimation: false });
     }
   },
   {
-    id: 5,
+    id: 6,
     title: "Research Workspace Activated",
     durationMs: 8000,
     narration: [
@@ -77,7 +88,7 @@ export const DEMO_TIMELINE: DemoScene[] = [
     }
   },
   {
-    id: 6,
+    id: 7,
     title: "Writing Workspace Activated",
     durationMs: 8000,
     narration: [
@@ -89,7 +100,7 @@ export const DEMO_TIMELINE: DemoScene[] = [
     }
   },
   {
-    id: 7,
+    id: 8,
     title: "Socratic Challenger Engaged",
     durationMs: 10000,
     narration: [
@@ -102,7 +113,7 @@ export const DEMO_TIMELINE: DemoScene[] = [
     }
   },
   {
-    id: 8,
+    id: 9,
     title: "Flow State Achieved",
     durationMs: 8000,
     narration: [
@@ -119,7 +130,7 @@ export const DEMO_TIMELINE: DemoScene[] = [
     }
   },
   {
-    id: 9,
+    id: 10,
     title: "The Competitor Comparison",
     durationMs: 8000,
     narration: [
@@ -130,7 +141,7 @@ export const DEMO_TIMELINE: DemoScene[] = [
     }
   },
   {
-    id: 10,
+    id: 11,
     title: "Outcome",
     durationMs: 10000,
     narration: [
@@ -145,7 +156,7 @@ export const DEMO_TIMELINE: DemoScene[] = [
     }
   },
   {
-    id: 11,
+    id: 12,
     title: "Final Screen",
     durationMs: 8000,
     narration: [],

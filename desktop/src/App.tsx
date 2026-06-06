@@ -12,6 +12,7 @@ import AdaptiveWorkspace from "./components/AdaptiveWorkspace";
 import { DevicePairingModal } from "./components/DevicePairingModal";
 import GlobalExecutiveHeader from "./components/GlobalExecutiveHeader";
 import GlobalInterventionFeed from "./components/GlobalInterventionFeed";
+import MissionDebriefModal from "./components/MissionDebriefModal";
 
 // Import remaining separate pages
 import SocraticPage from "./pages/SocraticPage";
@@ -45,6 +46,7 @@ export default function App() {
     Distracted: "#0F0E0A", // Subtle amber/yellow undertone
     Fatigued: "#0A0B12", // Cooler palette
     Overloaded: "#120A0A", // Emergency red undertone
+  };
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden text-primary-text font-sans bg-[#0A0D0B]">
       
@@ -120,6 +122,8 @@ export default function App() {
             </div>
           </motion.div>
         )}
+        
+        <MissionDebriefModal />
       </AnimatePresence>
       <CommandPalette onNavigate={setActiveTab} />
       <DemoRunner />

@@ -58,6 +58,12 @@ interface AppContextValue {
   interpreted: InterpretedMetrics;
   setActiveApp: (app: string) => void;
 
+  // Remote Control
+  showDebrief: boolean;
+  setShowDebrief: (show: boolean) => void;
+  isApexEnabled: boolean;
+  setIsApexEnabled: (enabled: boolean) => void;
+
   // WebSocket
   isConnected: boolean;
 }
@@ -95,15 +101,10 @@ export function AppProvider({ children }: AppProviderProps) {
   // ── Engine Interpreted Metrics ─────────────────────────
   const [engineInterpreted, setEngineInterpreted] = useState<InterpretedMetrics | null>(null);
 
-  // ── Initial Mount Auth Persistence ───────────────────────
-  useEffect(() => {
-    const savedToken = localStorage.getItem('apex_auth_token');
-    if (savedToken) {
-      setIsLoggedIn(true);
-      addLog('System', 'Session Disconnected', 'Token validated locally', 'Restored user session', 'Connecting to APEX server', 'Network +1', 100);
-      // Connection handled via the useWebSocket internal mechanisms or manual trigger
-    }
-  }, [addLog]);
+  // ── Remote Control ───────────────────────────────────────
+  const [showDebrief, setShowDebrief] = useState(false);
+  const [isApexEnabled, setIsApexEnabled] = useState(false);
+
 
   // ── Adaptive Enforcement ────────────────────────────────
   useEffect(() => {
@@ -148,6 +149,7 @@ export function AppProvider({ children }: AppProviderProps) {
     setLogs(prev => [entry, ...prev.slice(0, MAX_LOG_ENTRIES - 1)]);
   }, []);
 
+
   // ── Demo Orchestrator ───────────────────────────────────
   const { isDemoRunning, demoTelemetry, showPhoneOverlay, runDemoSequence } = useDemoOrchestrator(
     setCognitiveState,
@@ -161,18 +163,27 @@ export function AppProvider({ children }: AppProviderProps) {
 
   // ── WebSocket ───────────────────────────────────────────
   const { isConnected, connect, disconnect, lastMessage, sendMessage, isLocalMode } = useWebSocket({
-    url: 'ws://localhost:8000/api/v1/cognitive/stream',
+    url: 'ws://127.0.0.1:8080/api/v1/cognitive/stream',
     onConnectionChange: (connected) => {
       addLog('System', 
-        connected ? 'Offline' : 'Online',
-        connected ? 'Socket Ready' : 'Socket Closed',
-        connected ? 'Established connection' : 'Closed connection',
-        connected ? 'Ready for telemetry' : 'Offline mode engaged',
+        connected ? 'Office Kit Session Active' : 'Office Kit Session Offline',
+        connected ? 'iQOO Device Connected' : 'iQOO Device Disconnected',
+        connected ? 'Workspace Linked' : 'Workspace Unlinked',
+        connected ? 'Sensor Stream Active' : 'Offline mode engaged',
         'Latency -10ms',
         100
       );
     },
   });
+
+  // ── Initial Mount Auth Persistence ───────────────────────
+  useEffect(() => {
+    const savedToken = localStorage.getItem('apex_auth_token') || 'local-demo-token';
+    setIsLoggedIn(true);
+    addLog('System', 'Connecting Office Kit', 'Establishing Authority', 'iQOO Sync Initiated', 'Waiting for sensor stream', 'Network +1', 100);
+    connect(savedToken);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
 
   // ── Process incoming WS messages ────────────────────────
@@ -181,6 +192,11 @@ export function AppProvider({ children }: AppProviderProps) {
 
     const event = lastMessage as WebSocketEvent<CognitiveStatePayload>;
     if (event.event === 'COGNITIVE_STATE_DETERMINED' && event.payload) {
+      const { agent, action, desc, target } = event.payload as any;
+      if (agent) addLog(agent, action, desc, target, 'N/A', 'N/A', 1.0);
+      if (isConnected) {
+        sendMessage('AGENT_ACTION', event.payload);
+      }
       const { state, confidence_score, confidence } = event.payload;
       setCognitiveState(state);
       const conf = confidence ?? confidence_score ?? 0.85;
@@ -198,7 +214,7 @@ export function AppProvider({ children }: AppProviderProps) {
       const { state, confidence, attention_stability, focus_trend, cognitive_load } = event.payload;
       setCognitiveState(state);
       setConfidence(confidence ?? 0.85);
-      
+
       if (attention_stability && focus_trend && cognitive_load) {
         setEngineInterpreted({
           attentionStability: attention_stability as any,
@@ -217,8 +233,14 @@ export function AppProvider({ children }: AppProviderProps) {
         `Risk -20`,
         90
       );
+    } else if (event.event === 'DEMO_START') {
+      runDemoSequence();
+    } else if (event.event === 'SHOW_DEBRIEF') {
+      setShowDebrief(true);
+    } else if (event.event === 'TOGGLE_APEX') {
+      setIsApexEnabled(prev => !prev);
     }
-  }, [lastMessage, addLog]);
+  }, [lastMessage, addLog, runDemoSequence]);
 
   // ── Broadcast telemetry to server ───────────────────────
   useEffect(() => {
@@ -243,16 +265,25 @@ export function AppProvider({ children }: AppProviderProps) {
       setIsLoggedIn(true);
       localStorage.setItem('apex_auth_token', resolvedToken);
       connect(resolvedToken);
-      addLog('System', 'No active session', 'Valid credentials supplied', 'Authenticated user session', 'Connecting to APEX server', 'Network +1', 100);
+      addLog('System', 'No active session', 'Valid credentials supplied', 'Authenticated user session', 'Connecting Office Kit', 'Network +1', 100);
     },
     [connect, addLog],
   );
+
+  // ── Broadcast Context to Phone ───────────────────────────
+  useEffect(() => {
+    if (isConnected) {
+      sendMessage('DESKTOP_SYNC', {
+        workspace: engineInterpreted?.focusTrend === "Declining" ? "Social Media" : "CS-4120 Compilers"
+      });
+    }
+  }, [isConnected, engineInterpreted, sendMessage]);
 
   const logout = useCallback(() => {
     setIsLoggedIn(false);
     localStorage.removeItem('apex_auth_token');
     disconnect();
-    addLog('System', 'Session active', 'Manual user logout', 'Cleared credentials', 'WebSocket disconnected', 'Network 0', 100);
+    addLog('System', 'Session active', 'Manual user logout', 'Cleared credentials', 'Office Kit session ended', 'Network 0', 100);
   }, [disconnect, addLog]);
 
   // ── Memoised context value ──────────────────────────────
@@ -278,6 +309,10 @@ export function AppProvider({ children }: AppProviderProps) {
       isConnected,
       runDemoSequence,
       showPhoneOverlay,
+      showDebrief,
+      setShowDebrief,
+      isApexEnabled,
+      setIsApexEnabled,
     }),
     [
       cognitiveState,
@@ -296,6 +331,10 @@ export function AppProvider({ children }: AppProviderProps) {
       isConnected,
       runDemoSequence,
       showPhoneOverlay,
+      showDebrief,
+      setShowDebrief,
+      isApexEnabled,
+      setIsApexEnabled,
     ],
   );
 

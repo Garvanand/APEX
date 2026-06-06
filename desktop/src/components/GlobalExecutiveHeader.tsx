@@ -86,10 +86,10 @@ export default function GlobalExecutiveHeader() {
         </div>
 
         {/* Device Status */}
-        <div className="flex items-center gap-2 border-l border-white/10 pl-6">
+        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 rounded-full">
           <Smartphone className={`w-3.5 h-3.5 ${isConnected ? 'text-success' : 'text-white/30'}`} />
-          <span className="text-[10px] font-mono tracking-widest uppercase text-white/50">
-            {isConnected ? "Sensor Bridge" : "Sensors Offline"}
+          <span className={`text-[10px] font-bold uppercase tracking-wider ${isConnected ? 'text-success' : 'text-white/40'}`}>
+            {isConnected ? "Office Kit Active" : "iQOO Disconnected"}
           </span>
         </div>
       </div>

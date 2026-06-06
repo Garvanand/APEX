@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Activity, Eye, Volume2, CheckCircle2, AlertTriangle, 
@@ -15,12 +16,24 @@ import { useDemoState } from "../demo/DemoStateStore";
 import WorkspaceStoryEngine from "./WorkspaceStoryEngine";
 
 export default function AdaptiveWorkspace() {
-  const { cognitiveState, confidence, logs, addLog, telemetry, interpreted, adaptiveMode, setAdaptiveMode, triggerOptimization } = useAppContext();
+  const { cognitiveState, confidence, logs, addLog, telemetry, interpreted, adaptiveMode, setAdaptiveMode, triggerOptimization, isApexEnabled } = useAppContext();
   const { override } = useDemoState();
   
   // Right panel states
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [rightPanelTab, setRightPanelTab] = useState<"agents" | "mobile">("agents");
+
+  // Local IP for QR Code
+  const [localIp, setLocalIp] = useState<string>("192.168.31.2");
+
+  useEffect(() => {
+    fetch("http://localhost:8080/api/v1/network/info")
+      .then(res => res.json())
+      .then(data => {
+        if (data.ip) setLocalIp(data.ip);
+      })
+      .catch(e => console.error("Failed to fetch local IP", e));
+  }, []);
 
   // Agents status state embedded contextually
   const [agents, setAgents] = useState([
@@ -120,6 +133,54 @@ export default function AdaptiveWorkspace() {
         layout
         className={`relative flex-1 flex flex-col min-w-0 transition-all duration-700 ${adaptiveMode === "recovery" ? "filter grayscale opacity-90" : ""}`}
       >
+        {/* APEX DISABLED CHAOS OVERLAY */}
+        <AnimatePresence>
+          {!isApexEnabled && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-[100] bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center p-8 text-center"
+            >
+              <div className="w-full max-w-2xl bg-white text-black p-8 rounded-lg shadow-2xl rotate-1">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="w-12 h-12 bg-red-500 rounded-full flex flex-col items-center justify-center text-white font-bold text-xs shrink-0">
+                    <span className="text-xl">99+</span>
+                  </div>
+                  <div className="text-left">
+                    <h2 className="text-2xl font-bold">Standard OS Environment</h2>
+                    <p className="text-sm text-gray-600">No Intelligence Layer Active</p>
+                  </div>
+                </div>
+                
+                <div className="space-y-4">
+                  <div className="p-4 bg-gray-100 rounded text-left border border-gray-300">
+                    <span className="font-bold">Discord:</span> "Hey did you finish the parsing algorithm?"
+                  </div>
+                  <div className="p-4 bg-gray-100 rounded text-left border border-gray-300">
+                    <span className="font-bold">Outlook:</span> "Your AWS bill for this month is..."
+                  </div>
+                  <div className="p-4 bg-gray-100 rounded text-left border border-gray-300">
+                    <span className="font-bold">System:</span> "Updates are ready to install."
+                  </div>
+                </div>
+
+                <div className="mt-8 flex flex-col items-center justify-center p-6 bg-gray-100 rounded-xl border border-dashed border-gray-400">
+                  <p className="text-sm font-bold text-gray-700 mb-4 uppercase tracking-widest">
+                    Scan to Bridge iQOO Office Kit
+                  </p>
+                  <div className="p-4 bg-white rounded-lg shadow-sm">
+                    <QRCodeSVG value={`http://${localIp}:8080`} size={180} fgColor="#000000" bgColor="#FFFFFF" />
+                  </div>
+                  <p className="mt-4 text-xs font-mono text-gray-500">
+                    IP: {localIp}
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Top Level Emergency Recovery Banner */}
         <AnimatePresence mode="wait">
           {adaptiveMode === "recovery" && (

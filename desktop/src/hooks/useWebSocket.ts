@@ -26,7 +26,7 @@ interface UseWebSocketReturn {
   isLocalMode: boolean;
 }
 
-const DEFAULT_URL = 'ws://localhost:8000/api/v1/cognitive/stream';
+const DEFAULT_URL = 'ws://127.0.0.1:8000/api/v1/cognitive/stream';
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
 

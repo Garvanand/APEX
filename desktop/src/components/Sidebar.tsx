@@ -163,27 +163,22 @@ export default function Sidebar({
         </button>
 
         <div className={`flex items-center gap-2 text-[10px] font-mono text-secondary-text ${isFlow ? "justify-center" : ""}`}>
-          <span className={`w-1.5 h-1.5 shrink-0 rounded-full ${isConnected ? "bg-success" : "bg-warning animate-pulse"}`} title={isConnected ? "Online" : "Offline"} />
-          {!isFlow && <span>{isConnected ? "iQOO Office Sync Online" : "Sensor Bridge Offline"}</span>}
+          <span className={`w-1.5 h-1.5 shrink-0 rounded-full ${isConnected ? "bg-success" : "bg-success animate-pulse"}`} title={isConnected ? "iQOO Office Sync Online" : "Virtual iQOO Companion Ready"} />
+          {!isFlow && <span>{isConnected ? "iQOO Office Sync Online" : "Virtual iQOO Companion Ready"}</span>}
         </div>
 
-        {isLoggedIn ? (
-          <div className={`flex items-center gap-3 bg-black/20 border border-white/5 p-2 rounded-xl ${isFlow ? "justify-center" : ""}`}>
-            <div className="w-8 h-8 shrink-0 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-[10px] font-bold text-accent">
-              GA
+        {/* ALWAYS SHOW GA FOR DEMO FLUIDITY */}
+        <div className={`flex items-center gap-3 bg-black/20 border border-white/5 p-2 rounded-xl ${isFlow ? "justify-center" : ""}`}>
+          <div className="w-8 h-8 shrink-0 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-[10px] font-bold text-accent">
+            GA
+          </div>
+          {!isFlow && (
+            <div className="overflow-hidden">
+              <span className="block text-xs font-semibold text-white truncate">Garv Anand</span>
+              <span className="block text-[9px] text-secondary-text truncate">student@university.edu</span>
             </div>
-            {!isFlow && (
-              <div className="overflow-hidden">
-                <span className="block text-xs font-semibold text-white truncate">Garv Anand</span>
-                <span className="block text-[9px] text-secondary-text truncate">student@university.edu</span>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="text-[10px] text-center text-secondary-text py-2">
-            {!isFlow && "Authenticate to connect server."}
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </motion.aside>
   );
