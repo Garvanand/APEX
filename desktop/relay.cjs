@@ -4,11 +4,27 @@ const http = require('http');
 const path = require('path');
 const os = require('os');
 const OpenAI = require('openai');
+const ort = require('onnxruntime-node');
+const EMASmoother = require('./ema_smoother.cjs');
 
 const openai = new OpenAI({
     baseURL: "https://openrouter.ai/api/v1",
-    apiKey: "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",
+    apiKey: process.env.OPENROUTER_API_KEY || "YOUR_OPENROUTER_API_KEY_HERE",
 });
+
+let stateModel;
+const smoother = new EMASmoother(0.15);
+
+// Load ONNX model asynchronously
+async function loadModel() {
+    try {
+        stateModel = await ort.InferenceSession.create(path.join(__dirname, 'xgboost_state_model.onnx'));
+        console.log("[Relay-AI] XGBoost Cognitive State Model loaded successfully.");
+    } catch (e) {
+        console.error("[Relay-AI] Failed to load ONNX model:", e);
+    }
+}
+loadModel();
 
 const app = express();
 
@@ -28,8 +44,21 @@ app.use(express.json());
 
 // Get local IP Endpoint
 app.get('/api/v1/network/info', (req, res) => {
-    // Hardcoded to the active Wi-Fi adapter IP found via ipconfig
-    res.json({ ip: '172.30.214.101' });
+    const nets = os.networkInterfaces();
+    let localIp = '127.0.0.1';
+    for (const name of Object.keys(nets)) {
+        for (const net of nets[name]) {
+            // Skip over non-IPv4 and internal (i.e. 127.0.0.1) addresses
+            // 'IPv4' is in Node <= 17, from 18 it's a number 4 or string 'IPv4'
+            const familyV4Value = typeof net.family === 'string' ? 'IPv4' : 4;
+            if (net.family === familyV4Value && !net.internal) {
+                if (net.address.startsWith('192.') || net.address.startsWith('172.') || net.address.startsWith('10.')) {
+                    localIp = net.address;
+                }
+            }
+        }
+    }
+    res.json({ ip: localIp });
 });
 
 // Simulation Endpoint
@@ -169,12 +198,69 @@ wss.on('connection', (ws, req) => {
             const data = JSON.parse(message);
             console.log(`[Relay] Received Event: ${data.event}`);
             
-            // Broadcast to everyone else
-            wss.clients.forEach(client => {
-                if (client !== ws && client.readyState === 1) {
-                    client.send(message.toString());
+            // Handle incoming feature vector for ML inference
+            if (data.event === "SENSOR_FEATURE_VECTOR" && stateModel) {
+                try {
+                    // Create float32 tensor: shape [1, 5] (sma, jerk, spectral, touch, app_switches)
+                    // We mock spectral and app_switches if not available from mobile directly
+                    const sma = data.payload.sma || 0;
+                    const jerk = data.payload.jerk_variance || 0;
+                    const touch = data.payload.touch_density || 0;
+                    const appSwitches = data.payload.app_switches || 0;
+                    const spectral = 1.0; // Mocked fallback
+                    
+                    const tensorData = Float32Array.from([sma, jerk, spectral, touch, appSwitches]);
+                    const tensor = new ort.Tensor('float32', tensorData, [1, 5]);
+                    
+                    const feeds = { float_input: tensor };
+                    stateModel.run(feeds).then(results => {
+                        const probabilities = results.probabilities.data;
+                        const smoothed = smoother.update(probabilities);
+                        
+                        // State Mapping: 0=Flow, 1=Distracted, 2=Fatigued, 3=Overloaded
+                        let cognitiveState = "Flow";
+                        let distractionScore = 0;
+                        let fatigueScore = 0;
+                        let flowConfidence = Math.round(smoothed.probabilities[0] * 100);
+
+                        if (smoothed.stateIndex === 1 || smoothed.probabilities[1] > 0.7) {
+                            cognitiveState = "Distracted";
+                            distractionScore = Math.round(smoothed.probabilities[1] * 100);
+                        } else if (smoothed.stateIndex === 2 || smoothed.probabilities[2] > 0.7) {
+                            cognitiveState = "Fatigued";
+                            fatigueScore = Math.round(smoothed.probabilities[2] * 100);
+                        } else if (smoothed.stateIndex === 3 || smoothed.probabilities[3] > 0.7) {
+                            cognitiveState = "Overloaded";
+                            distractionScore = 100;
+                            fatigueScore = 100;
+                        }
+
+                        const broadcastPayload = JSON.stringify({
+                            event: "COGNITIVE_STATE_REALTIME",
+                            payload: {
+                                distractionScore: distractionScore,
+                                flowConfidence: flowConfidence,
+                                fatigueScore: fatigueScore,
+                                state: cognitiveState,
+                                device_source: "iqoo-mobile-client"
+                            }
+                        });
+
+                        wss.clients.forEach(client => {
+                            if (client.readyState === 1) client.send(broadcastPayload);
+                        });
+                    });
+                } catch (infErr) {
+                    console.error("[Relay-AI] Inference Error:", infErr);
                 }
-            });
+            } else {
+                // Broadcast all other events
+                wss.clients.forEach(client => {
+                    if (client !== ws && client.readyState === 1) {
+                        client.send(message.toString());
+                    }
+                });
+            }
         } catch (e) {
             console.error('[Relay] Failed to parse/broadcast message', e);
         }

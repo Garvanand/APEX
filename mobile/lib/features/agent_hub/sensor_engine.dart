@@ -19,6 +19,19 @@ class SensorEngine extends ChangeNotifier {
   int touchBurstCount = 0;
   int backgroundTransitions = 0;
 
+  double sma5s = 0.0;
+  double jerkVariance5s = 0.0;
+  double touchDensity5s = 0.0;
+  
+  final List<double> _magBuffer = [];
+  final List<double> _accelXBuffer = [];
+  final List<double> _accelYBuffer = [];
+  final List<double> _accelZBuffer = [];
+  int _touchCount5s = 0;
+  int _ticks5s = 0;
+
+  Function(double sma, double jerk, double touchDensity, int appSwitches)? onFeatureVectorCalculated;
+
   Timer? _tickTimer;
   final List<StreamSubscription> _subs = [];
 
@@ -65,6 +78,7 @@ class SensorEngine extends ChangeNotifier {
 
   void registerTouch() {
     touchBurstCount += 15;
+    _touchCount5s += 1;
     if (touchBurstCount > 50) touchBurstCount = 50;
     
     // Each touch slightly increases distraction if it's bursting
@@ -117,7 +131,50 @@ class SensorEngine extends ChangeNotifier {
     double magnitude = sqrt(accelX * accelX + accelY * accelY + accelZ * accelZ);
     double movement = (magnitude - 9.8).abs();
     
-    // Distraction Logic
+    _magBuffer.add(magnitude);
+    _accelXBuffer.add(accelX);
+    _accelYBuffer.add(accelY);
+    _accelZBuffer.add(accelZ);
+    _ticks5s++;
+    
+    if (_ticks5s >= 10) { // 5 seconds (500ms * 10)
+      // Calculate SMA
+      double sumSma = 0;
+      for (int i=0; i<_accelXBuffer.length; i++) {
+        sumSma += _accelXBuffer[i].abs() + _accelYBuffer[i].abs() + _accelZBuffer[i].abs();
+      }
+      sma5s = sumSma / _accelXBuffer.length;
+      
+      // Calculate Jerk Variance
+      List<double> jerks = [];
+      for (int i=1; i<_magBuffer.length; i++) {
+         jerks.add(_magBuffer[i] - _magBuffer[i-1]);
+      }
+      double jerkMean = jerks.isEmpty ? 0 : jerks.reduce((a, b) => a + b) / jerks.length;
+      double jerkVarSum = 0;
+      for (var j in jerks) {
+         jerkVarSum += pow(j - jerkMean, 2);
+      }
+      jerkVariance5s = jerks.isEmpty ? 0 : jerkVarSum / jerks.length;
+      
+      // Calculate Touch Density
+      touchDensity5s = _touchCount5s / 5.0;
+      
+      if (onFeatureVectorCalculated != null) {
+        onFeatureVectorCalculated!(sma5s, jerkVariance5s, touchDensity5s, backgroundTransitions);
+      }
+      
+      // Reset buffers
+      _magBuffer.clear();
+      _accelXBuffer.clear();
+      _accelYBuffer.clear();
+      _accelZBuffer.clear();
+      _touchCount5s = 0;
+      _ticks5s = 0;
+      backgroundTransitions = 0;
+    }
+
+    // Distraction Logic (Fallback for UI)
     if (movement > 3.0) {
       distractionScore += 8; // Moving phone around rapidly
     } else if (movement > 1.0) {

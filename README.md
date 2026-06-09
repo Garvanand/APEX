@@ -35,10 +35,10 @@ If the student is distracted (measured via rapid phone movement, rapid tapping, 
 We built APEX strictly around the **iQOO Hackathon Scoring Rubric**:
 
 ### 1. iQOO Office Kit Usage (25%)
-We heavily utilized the **iQOO Office Kit** to build the ultimate bridge between phone and laptop. 
-* **The "Red Light / Green Light" Workflow:** APEX respects the 60% Phone / 40% PC ratio. During deep work (Red Light), the PC is locked down and the student relies *solely* on the phone's Agent Hub for quick captures and Socratic reviews. 
-* **Remote Control & Mirroring:** Used heavily during development to push code across screens and verify layout synchrony.
-* **File Transfer & Sync:** Our WebSocket bridge mirrors the core principles of Office Kit—when a student types a "Brain Dump" on the phone during a lockdown, it instantly transfers to the PC scratchpad.
+We adhered strictly to the **Red Light / Green Light Sprint Constraints** by heavily utilizing the iQOO Office Kit throughout our development cycle:
+* **Surviving the 60% Red Light:** During the phone-only build windows, we relied entirely on the iQOO device to write logic, test sensor engines, and orchestrate the mobile Agent Hub. Laptops were completely restricted.
+* **Capitalizing on the 40% Green Light:** When both devices unlocked, the Office Kit became our lifeline. We used **Screen Mirroring** to verify desktop/mobile UI synchrony in real-time, and **File Transfer** to rapidly drag-and-drop compiled Flutter builds and assets from the laptop directly to the phone for native testing.
+* **Remote Control:** During final demo polish, we utilized the remote control features to trigger laptop execution scripts straight from the phone interface, ensuring a flawless, tether-free presentation.
 
 ### 2. Phone-First Execution (25%)
 **The phone is the interface; the laptop is the muscle.** 

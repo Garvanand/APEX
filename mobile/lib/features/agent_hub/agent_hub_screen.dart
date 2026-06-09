@@ -65,6 +65,15 @@ class _AgentHubScreenState extends State<AgentHubScreen> with WidgetsBindingObse
     
     _sensorEngine.start();
     _sensorEngine.addListener(_onSensorUpdate);
+    
+    _sensorEngine.onFeatureVectorCalculated = (sma, jerk, touchDensity, appSwitches) {
+      _ws.sendEvent("SENSOR_FEATURE_VECTOR", {
+        "sma": sma,
+        "jerk_variance": jerk,
+        "touch_density": touchDensity,
+        "app_switches": appSwitches
+      });
+    };
   }
 
   @override
