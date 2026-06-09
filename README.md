@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://via.placeholder.com/150x150/FFD400/000000?text=APEX" alt="APEX Logo" width="100"/>
+  
   <h1>APEX : AgentKit for the Student Enterprise</h1>
   <p><strong>Adaptive Presence & Execution Intelligence</strong></p>
   <p><i>The phone is the interface. The laptop is the muscle.</i></p>
