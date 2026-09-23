@@ -180,6 +180,11 @@ if (fs.existsSync(mobilePublicDir)) {
     relayLog('HTTP', `Mounted mobile companion web build at /mobile`);
 }
 
+// ── Health Check ─────────────────────────────────────────
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', uptime: process.uptime(), timestamp: Date.now(), devices: getConnectedDevices().length });
+});
+
 // ── Network Info ─────────────────────────────────────────
 app.get('/api/v1/network/info', (req, res) => {
     const nets = os.networkInterfaces();
