@@ -25,7 +25,7 @@ import { useAppContext } from "./context/AppContext";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>("workspace");
-  const { isLoggedIn, login, cognitiveState, isOptimizing, showPhoneOverlay, isLocalMode } = useAppContext();
+  const { isLoggedIn, login, cognitiveState, isOptimizing, showPhoneOverlay } = useAppContext();
   const [tokenInput, setTokenInput] = useState("");
   const [showPairing, setShowPairing] = useState(false);
 

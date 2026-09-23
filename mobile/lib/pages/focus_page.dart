@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../services/websocket_service.dart';
 import '../models/cognitive_state.dart';
 
@@ -78,7 +77,7 @@ class _FocusPageState extends State<FocusPage> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final wsService = Provider.of<WebSocketService>(context);
+    final wsService = WebSocketService();
     final displayedState = wsService.currentState?.state ?? 'Flow';
 
     // Ease breathing rate dynamically based on state

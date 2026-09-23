@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../main.dart';
+import '../features/agent_hub/agent_hub_screen.dart';
 
 class PermissionsPage extends StatefulWidget {
   const PermissionsPage({super.key});
@@ -17,14 +17,14 @@ class _PermissionsPageState extends State<PermissionsPage> {
   void _confirmPermissions() {
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (context) => const MainNavigationScreen()),
+      MaterialPageRoute(builder: (context) => const AgentHubScreen()),
     );
   }
 
   void _skipAll() {
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (context) => const MainNavigationScreen()),
+      MaterialPageRoute(builder: (context) => const AgentHubScreen()),
     );
   }
 

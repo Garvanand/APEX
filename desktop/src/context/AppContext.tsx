@@ -11,12 +11,10 @@ import type {
   CognitiveState,
   AgentLog,
   TelemetryData,
-  CognitiveStatePayload,
   WebSocketEvent,
 } from '../types';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { useWebSocket, type ConnectionStatus } from '../hooks/useWebSocket';
 import { useTelemetry, InterpretedMetrics } from '../hooks/useTelemetry';
-import { useDemoOrchestrator } from '../hooks/useDemoOrchestrator';
 import { generateSocraticSupport } from '../lib/openrouter';
 
 export interface MobileTelemetry {
@@ -29,22 +27,51 @@ export interface MobileTelemetry {
   fatigueScore: number;
 }
 
+// ─── Event Timeline Entry ───────────────────────────────
+export interface TimelineEntry {
+  id: string;
+  time: string;
+  timestamp: number;
+  event: string;
+  detail: string;
+  source: string;
+}
+
 // ─────────────────────────────────────────────────────────────
 // AppContext — global state provider
 // ─────────────────────────────────────────────────────────────
 
 const MAX_LOG_ENTRIES = 50;
+const MAX_TIMELINE_ENTRIES = 100;
+
+function normalizeCognitiveState(stateStr: string): CognitiveState {
+  const s = (stateStr || '').toLowerCase();
+  if (s.includes('distract')) return 'Distracted';
+  if (s.includes('fatigue')) return 'Fatigued';
+  if (s.includes('overload')) return 'Overloaded';
+  return 'Flow';
+}
 
 export type AdaptiveMode = "flow" | "research" | "writing" | "deadline" | "recovery";
 
-// ─── Context Shape ──────────────────────────────────────────
+// ─── Sculptor Action Lifecycle ──────────────────────────
+export type SculptorStatus = 'idle' | 'proposed' | 'executing' | 'completed';
+export interface SculptorAction {
+  status: SculptorStatus;
+  action: string;
+  trigger: string;
+  timestamp: number;
+}
+
+// ─── Context Shape ──────────────────────────────────────
 
 interface AppContextValue {
   // Cognitive state
   cognitiveState: CognitiveState;
   setCognitiveState: (state: CognitiveState) => void;
   confidence: number;
-  setConfidence: (confidence: number) => void;
+  stateSource: string; // 'mobile' | 'relay_ml' | 'demo' | 'local'
+  stateUpdatedAt: number | null;
 
   // Workspace Mode
   adaptiveMode: AdaptiveMode;
@@ -52,19 +79,31 @@ interface AppContextValue {
   isOptimizing: boolean;
   triggerOptimization: (targetMode: AdaptiveMode) => void;
 
+  // Sculptor
+  sculptorAction: SculptorAction;
+
   // Logging
   logs: AgentLog[];
-  addLog: (agent: string, problem: string, reason: string, action: string, outcome: string, impact: string, confidence: number) => void;
+  addLog: (agent: string, problem: string, reason: string, action: string, outcome?: string, impact?: string, confidence?: number) => void;
   networkLogs: string[];
   addNetworkLog: (log: string) => void;
+
+  // Timeline
+  timeline: TimelineEntry[];
+
+  // Connection
+  connectionStatus: ConnectionStatus;
+  isConnected: boolean;
+  sessionId: string | null;
+  latencyMs: number;
+  lastHeartbeat: number | null;
+  phoneConnected: boolean;
+  phoneDeviceName: string | null;
 
   // Auth
   isLoggedIn: boolean;
   login: (token?: string) => void;
-  isLocalMode: boolean;
   logout: () => void;
-  runDemoSequence: () => void;
-  showPhoneOverlay: boolean;
 
   // Telemetry
   telemetry: TelemetryData;
@@ -77,35 +116,29 @@ interface AppContextValue {
   isApexEnabled: boolean;
   setIsApexEnabled: (enabled: boolean) => void;
 
-  // WebSocket
-  isConnected: boolean;
-
   // Active Execution
   activeExecution: { agentType: string; status: string; inputData?: string; result?: any } | null;
 
-  // Demo Sync State
-  lastDemoSync: any | null;
-
-  // Real Sensor Data
+  // Real Sensor Data from Phone
   mobileTelemetry: MobileTelemetry | null;
+
+  // Demo
+  lastDemoSync: any;
+  runDemoSequence: () => void;
+  showPhoneOverlay: boolean;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
 
-// ─── Hook ───────────────────────────────────────────────────
-
 export function useAppContext(): AppContextValue {
   const ctx = useContext(AppContext);
   if (!ctx) {
-    throw new Error(
-      'useAppContext must be used within an <AppProvider>. ' +
-        'Wrap your component tree with <AppProvider> in main.tsx.',
-    );
+    throw new Error('useAppContext must be used within an <AppProvider>.');
   }
   return ctx;
 }
 
-// ─── Provider ───────────────────────────────────────────────
+// ─── Provider ───────────────────────────────────────────
 
 interface AppProviderProps {
   children: ReactNode;
@@ -117,22 +150,54 @@ export function AppProvider({ children }: AppProviderProps) {
   const [adaptiveMode, setAdaptiveMode] = useState<AdaptiveMode>('flow');
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [confidence, setConfidence] = useState(0.92);
+  const [stateSource, setStateSource] = useState('local');
+  const [stateUpdatedAt, setStateUpdatedAt] = useState<number | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [logs, setLogs] = useState<AgentLog[]>([]);
+  const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [networkLogs, setNetworkLogs] = useState<string[]>([]);
-  
-  // ── Engine Interpreted Metrics ─────────────────────────
-  const [engineInterpreted, setEngineInterpreted] = useState<InterpretedMetrics | null>(null);
+  const [lastDemoSync, setLastDemoSync] = useState<any>(null);
+
+  const addNetworkLog = useCallback((log: string) => {
+    setNetworkLogs(prev => [log, ...prev.slice(0, 49)]);
+  }, []);
+
+  // ── Sculptor ────────────────────────────────────────────
+  const [sculptorAction, setSculptorAction] = useState<SculptorAction>({
+    status: 'idle', action: '', trigger: '', timestamp: 0
+  });
 
   // ── Real Mobile Telemetry ──────────────────────────────
   const [mobileTelemetry, setMobileTelemetry] = useState<MobileTelemetry | null>(null);
 
-  // ── Remote Control ───────────────────────────────────────
+  // ── Remote Control ────────────────────────────────────
   const [showDebrief, setShowDebrief] = useState(false);
   const [isApexEnabled, setIsApexEnabled] = useState(false);
+  const [showPhoneOverlay, setShowPhoneOverlay] = useState(false);
 
-  // ── Active Execution ─────────────────────────────────────
+  // ── Active Execution ──────────────────────────────────
   const [activeExecution, setActiveExecution] = useState<{ agentType: string; status: string; inputData?: string; result?: any } | null>(null);
+
+  // ── Timeline helper ───────────────────────────────────
+  const addTimeline = useCallback((event: string, detail: string, source: string) => {
+    const now = new Date();
+    const timeStr = [
+      now.getHours().toString().padStart(2, '0'),
+      now.getMinutes().toString().padStart(2, '0'),
+      now.getSeconds().toString().padStart(2, '0'),
+    ].join(':');
+
+    addNetworkLog(`[${timeStr}] [${source.toUpperCase()}] ${event}: ${detail}`);
+
+    setTimeline(prev => [{
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      time: timeStr,
+      timestamp: Date.now(),
+      event,
+      detail,
+      source,
+    }, ...prev.slice(0, MAX_TIMELINE_ENTRIES - 1)]);
+  }, [addNetworkLog]);
 
   // ── Adaptive Enforcement ────────────────────────────────
   useEffect(() => {
@@ -145,16 +210,66 @@ export function AppProvider({ children }: AppProviderProps) {
 
   const triggerOptimization = useCallback((targetMode: AdaptiveMode) => {
     setIsOptimizing(true);
-    setAdaptiveMode(targetMode); // Switch the mode immediately so the Visualizer can read it to decide which interventions to plan
-    
-    // Let the visualizer sequence run for 5.5 seconds before lifting the overlay
-    setTimeout(() => {
-      setIsOptimizing(false);
-    }, 5500);
+    setAdaptiveMode(targetMode);
+    setTimeout(() => setIsOptimizing(false), 5500);
   }, []);
 
+  // ── Sculptor lifecycle ──────────────────────────────────
+  const executeSculptorAction = useCallback((state: CognitiveState, sendMessage: <T>(event: string, payload: T) => void) => {
+    let action = '';
+    let trigger = `State changed to ${state}`;
+
+    switch (state) {
+      case 'Flow':
+        action = 'Protecting workspace — maintaining clean environment';
+        break;
+      case 'Distracted':
+        action = 'Focus intervention — reducing distraction surfaces';
+        triggerOptimization('flow');
+        break;
+      case 'Fatigued':
+        action = 'Recovery intervention — simplifying workspace';
+        triggerOptimization('recovery');
+        break;
+      case 'Overloaded':
+        action = 'Emergency intervention — entering recovery mode';
+        triggerOptimization('recovery');
+        break;
+    }
+
+    // PROPOSED
+    setSculptorAction({ status: 'proposed', action, trigger, timestamp: Date.now() });
+    addTimeline('SCULPTOR_PROPOSED', action, 'desktop');
+
+    // EXECUTING (after 500ms)
+    setTimeout(() => {
+      setSculptorAction(prev => ({ ...prev, status: 'executing' }));
+      addTimeline('SCULPTOR_EXECUTING', action, 'desktop');
+    }, 500);
+
+    // COMPLETED (after 2s) + send ACK to relay
+    setTimeout(() => {
+      setSculptorAction(prev => ({ ...prev, status: 'completed' }));
+      addTimeline('SCULPTOR_COMPLETED', action, 'desktop');
+      sendMessage('SCULPTOR_ACTION_EXECUTED', { action, state, timestamp: Date.now() });
+    }, 2000);
+
+    // Back to idle after 5s
+    setTimeout(() => {
+      setSculptorAction(prev => prev.status === 'completed' ? { ...prev, status: 'idle' } : prev);
+    }, 5000);
+  }, [triggerOptimization, addTimeline]);
+
   // ── Logging ─────────────────────────────────────────────
-  const addLog = useCallback((agent: string, problem: string, reason: string, action: string, outcome: string, impact: string, confidence: number) => {
+  const addLog = useCallback((
+    agent: string,
+    problem: string,
+    reason: string,
+    action: string,
+    outcome: string = 'Executed',
+    impact: string = 'Neutral',
+    confidence: number = 90
+  ) => {
     const now = new Date();
     const timeStr = [
       now.getHours().toString().padStart(2, '0'),
@@ -167,6 +282,7 @@ export function AppProvider({ children }: AppProviderProps) {
       time: timeStr,
       agent,
       problem,
+      trigger: problem,
       reason,
       action,
       outcome,
@@ -177,282 +293,329 @@ export function AppProvider({ children }: AppProviderProps) {
     setLogs(prev => [entry, ...prev.slice(0, MAX_LOG_ENTRIES - 1)]);
   }, []);
 
-  const addNetworkLog = useCallback((log: string) => {
-    const time = new Date().toISOString().split('T')[1].split('.')[0];
-    setNetworkLogs(prev => [`[${time}] ${log}`, ...prev].slice(0, 20));
-  }, []);
-
   // ── WebSocket ───────────────────────────────────────────
-  const { isConnected, connect, disconnect, lastMessage, sendMessage, isLocalMode } = useWebSocket({
-    url: 'ws://127.0.0.1:8080/api/v1/cognitive/stream',
-    onConnectionChange: (connected) => {
-      addLog('System', 
-        connected ? 'Office Kit Session Active' : 'Office Kit Session Offline',
-        connected ? 'iQOO Device Connected' : 'iQOO Device Disconnected',
-        connected ? 'Workspace Linked' : 'Workspace Unlinked',
-        connected ? 'Sensor Stream Active' : 'Offline mode engaged',
-        'Latency -10ms',
-        100
-      );
+  const {
+    connectionStatus, isConnected, connect, disconnect, sendMessage, lastMessage,
+    sessionId, latencyMs, lastHeartbeat,
+    phoneConnected, phoneDevice,
+  } = useWebSocket({
+    url: 'ws://127.0.0.1:8080/ws',
+    onConnectionChange: (status) => {
+      addTimeline(`RELAY_${status.toUpperCase()}`, `Connection status: ${status}`, 'desktop');
+      if (status === 'connected') {
+        setIsApexEnabled(true);
+        addLog('System', 'Relay Bridge Connected', 'WebSocket handshake completed', 'Session established', 'Real-time link active', 'Network +1', 100);
+      } else if (status === 'offline') {
+        addLog('System', 'Relay Bridge Offline', 'Connection lost', 'Session ended', 'Offline mode', 'Network -1', 100);
+      }
     },
   });
 
-  // ── Demo Orchestrator ───────────────────────────────────
-  const { isDemoRunning, demoTelemetry, showPhoneOverlay, lastDemoSync, runDemoSequence } = useDemoOrchestrator(
-    setCognitiveState,
-    setAdaptiveMode,
-    triggerOptimization,
-    addLog,
-    sendMessage,
-    addNetworkLog
-  );
-
-  const { telemetry, interpreted, setActiveApp } = useTelemetry(cognitiveState, { demoOverride: demoTelemetry });
-
-  // ── Initial Mount Auth Persistence ───────────────────────
+  // ── Auto-connect on mount ──────────────────────────────
   useEffect(() => {
-    const savedToken = localStorage.getItem('apex_auth_token') || 'local-demo-token';
     setIsLoggedIn(true);
-    addLog('System', 'Connecting Office Kit', 'Establishing Authority', 'iQOO Sync Initiated', 'Waiting for sensor stream', 'Network +1', 100);
-    connect(savedToken);
+    connect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Phone connection tracking ──────────────────────────
+  useEffect(() => {
+    if (phoneConnected && phoneDevice) {
+      addTimeline('PHONE_CONNECTED', `${phoneDevice.device_name} linked`, 'relay');
+      addLog('System', 'Phone Connected', `Device: ${phoneDevice.device_name}`, 'Sensor stream active', 'Cross-device link established', 'Network +1', 100);
+    }
+  }, [phoneConnected, phoneDevice, addTimeline, addLog]);
 
   // ── Process incoming WS messages ────────────────────────
   useEffect(() => {
     if (!lastMessage) return;
 
-    const event = lastMessage as WebSocketEvent<CognitiveStatePayload>;
-    if (event.event === 'COGNITIVE_STATE_DETERMINED' && event.payload) {
-      const { agent, action, desc, target } = event.payload as any;
-      if (agent) addLog(agent, action, desc, target, 'N/A', 'N/A', 1.0);
-      if (isConnected) {
-        sendMessage('AGENT_ACTION', event.payload);
-      }
-      const { state, confidence_score, confidence } = event.payload;
-      setCognitiveState(state);
-      const conf = confidence ?? confidence_score ?? 0.85;
-      setConfidence(conf);
-      addLog(
-        'State Agent',
-        `Uncertain state bounds`,
-        `New state from server: ${state}`,
-        `Re-evaluated bounds`,
-        'System logic bound to new state',
-        `Flow +${Math.round(conf * 10)}`,
-        Math.round(conf * 100)
-      );
-    } else if (event.event === 'STATE_TRANSITION' && event.payload) {
-      const { state, confidence, attention_stability, focus_trend, cognitive_load } = event.payload;
-      setCognitiveState(state);
-      setConfidence(confidence ?? 0.85);
+    const event = lastMessage as WebSocketEvent<any>;
+    const eventType = event.event;
 
-      if (attention_stability && focus_trend && cognitive_load) {
-        setEngineInterpreted({
-          attentionStability: attention_stability as any,
-          focusTrend: focus_trend as any,
-          contextSwitching: "Acceptable", // Mapping
-          cognitiveLoad: cognitive_load as any,
+    switch (eventType) {
+      case 'COGNITIVE_STATE_COMMITTED': {
+        const rawState = event.payload?.state || 'FLOW';
+        const targetState = normalizeCognitiveState(rawState);
+        const conf = typeof event.payload?.confidence === 'number'
+          ? (event.payload.confidence > 1 ? event.payload.confidence / 100 : event.payload.confidence)
+          : 0.94;
+        const sourceDev = event.payload?.source_device || event.payload?.device_name || 'mobile';
+        const prevState = cognitiveState;
+
+        setCognitiveState(targetState);
+        setConfidence(conf);
+        setStateSource(sourceDev);
+        setStateUpdatedAt(Date.now());
+        setIsApexEnabled(true);
+
+        addTimeline('STATE_TRANSITION', `${prevState} → ${targetState} (${sourceDev})`, sourceDev);
+        addLog(
+          'State Agent',
+          `Cognitive event: ${targetState}`,
+          event.payload?.reason || `Triggered by ${sourceDev}`,
+          `Transition: ${prevState} → ${targetState}`,
+          'State committed to workspace context',
+          `Confidence: ${Math.round(conf * 100)}%`,
+          Math.round(conf * 100)
+        );
+
+        // Notify relay of desktop state change
+        sendMessage('DESKTOP_STATE_CHANGED', {
+          state: targetState,
+          previousState: prevState,
+          source_device: 'desktop',
+          timestamp: Date.now(),
         });
+
+        // Trigger sculptor
+        executeSculptorAction(targetState, sendMessage);
+        break;
       }
-      
-      addLog(
-        'State Agent',
-        `Cognitive fatigue pattern detected`,
-        `Computed Engine Weights`,
-        `Transitioned state to: ${state}`,
-        'Visual indicators updated',
-        `Risk -20`,
-        90
-      );
-    } else if (event.event === 'DEMO_START') {
-      runDemoSequence();
-    } else if (event.event === 'SHOW_DEBRIEF') {
-      setShowDebrief(true);
-    } else if (event.event === 'TOGGLE_APEX') {
-      setIsApexEnabled(prev => !prev);
-    } else if (event.event === 'COMPUTE_ACTIVE') {
-      setActiveExecution(event.payload as any);
-      setIsApexEnabled(true); // Automatically unlock if phone sends a task
-    } else if (event.event === 'COMPUTE_COMPLETE') {
-      setActiveExecution(event.payload as any);
-      setTimeout(() => setActiveExecution(null), 10000); // Clear after 10 seconds
-    } else if (event.event === 'QUICK_CAPTURE' && event.payload) {
-      const { text } = event.payload as any;
-      addLog(
-        'Environment Sculptor',
-        'Quick capture received from phone',
-        `Thought synced: "${text}"`,
-        'Saved to persistent scratchpad',
-        'Phone flow unblocked',
-        'Flow +15',
-        95
-      );
-    } else if (event.event === 'HELP_REQUEST') {
-      addLog(
-        'Socratic Challenger',
-        'Help requested from lockdown screen',
-        'Student stuck on current task',
-        'Initiating Socratic Support Mode',
-        'Retrieving context for "CS-4120 Compilers"',
-        'Recovery +25',
-        100
-      );
-      
-      // Trigger LLM to fetch actual socratic advice
-      setActiveExecution({
-        agentType: "Socratic Challenger",
-        status: "Processing",
-        inputData: "I'm stuck on CS-4120 Compilers Parsing Algorithms"
-      });
-      
-      generateSocraticSupport("CS-4120 Compilers Parsing Algorithms").then((response) => {
+
+      case 'STATE_TRANSITION': {
+        const { state, confidence: conf, source_device } = event.payload;
+        const targetState = normalizeCognitiveState(state);
+        const prevState = cognitiveState;
+        setCognitiveState(targetState);
+        setConfidence(conf ?? 0.85);
+        setStateSource(source_device || 'unknown');
+        setStateUpdatedAt(Date.now());
+        setIsApexEnabled(true);
+
+        addTimeline('STATE_TRANSITION', `${prevState} → ${targetState}`, source_device || 'unknown');
+        addLog('State Agent', `State transition detected`, `Source: ${source_device}`, `${prevState} → ${targetState}`, 'Cognitive state updated', `Confidence: ${Math.round((conf ?? 0.85) * 100)}%`, Math.round((conf ?? 0.85) * 100));
+
+        // Trigger sculptor
+        if (targetState !== prevState) {
+          executeSculptorAction(targetState, sendMessage);
+        }
+        break;
+      }
+
+      case 'COGNITIVE_STATE_REALTIME': {
+        const payload = event.payload;
+        if (payload.source_device === 'mobile' || payload.device_source === 'iqoo-mobile-client') {
+          const distScore = payload.distractionScore || 0;
+          let newState: CognitiveState = 'Flow';
+          if (distScore > 75) newState = 'Overloaded';
+          else if (distScore > 50) newState = 'Distracted';
+          else if ((payload.fatigueScore || 0) > 60) newState = 'Fatigued';
+
+          const prevState = cognitiveState;
+          if (prevState !== newState) {
+            setCognitiveState(newState);
+            setStateSource('mobile');
+            setStateUpdatedAt(Date.now());
+            addTimeline('STATE_FROM_PHONE', `${prevState} → ${newState} (distraction: ${distScore})`, 'mobile');
+
+            // Trigger sculptor
+            executeSculptorAction(newState, sendMessage);
+          }
+
+          const newConf = (payload.flowConfidence || 0) / 100;
+          setConfidence(prev => Math.abs(prev - newConf) > 0.05 ? newConf : prev);
+
+          setMobileTelemetry({
+            accelX: payload.accelX ?? 0,
+            accelY: payload.accelY ?? 0,
+            accelZ: payload.accelZ ?? 0,
+            touchBurstCount: payload.touchBurstCount ?? 0,
+            backgroundTransitions: payload.backgroundTransitions ?? 0,
+            distractionScore: payload.distractionScore ?? 0,
+            fatigueScore: payload.fatigueScore ?? 0,
+          });
+        }
+        break;
+      }
+
+      case 'ML_INFERENCE_RESULT': {
+        const { state, flowConfidence, inference_source } = event.payload;
+        const prevState = cognitiveState;
+        if (prevState !== state) {
+          setCognitiveState(state);
+          setStateSource(`relay_ml (${inference_source})`);
+          setStateUpdatedAt(Date.now());
+          addTimeline('ML_INFERENCE', `${prevState} → ${state} via ${inference_source}`, 'relay');
+          executeSculptorAction(state, sendMessage);
+        }
+        if (flowConfidence) {
+          setConfidence(flowConfidence / 100);
+        }
+        break;
+      }
+
+      case 'DEVICE_CONNECTED': {
+        const dev = event.payload;
+        addTimeline('DEVICE_CONNECTED', `${dev.device_name} (${dev.device_type})`, 'relay');
+        if (dev.device_type === 'mobile') {
+          setIsApexEnabled(true);
+          addLog('System', 'Phone Paired', `${dev.device_name} connected`, 'Sensor bridge active', 'Cross-device link live', 'Network +1', 100);
+        }
+        break;
+      }
+
+      case 'DEVICE_DISCONNECTED': {
+        const dev = event.payload;
+        addTimeline('DEVICE_DISCONNECTED', `${dev.device_name} (${dev.device_type})`, 'relay');
+        if (dev.device_type === 'mobile') {
+          addLog('System', 'Phone Disconnected', `${dev.device_name} lost`, 'Sensor stream ended', 'Single-device mode', 'Network -1', 100);
+        }
+        break;
+      }
+
+      case 'TOGGLE_APEX': {
+        if (typeof event.payload === 'boolean') {
+          setIsApexEnabled(event.payload);
+        } else {
+          setIsApexEnabled(prev => !prev);
+        }
+        break;
+      }
+
+      case 'COMPUTE_ACTIVE': {
+        setActiveExecution(event.payload);
+        setIsApexEnabled(true);
+        addTimeline('COMPUTE_ACTIVE', `${event.payload?.agentType} processing`, event.payload?.source || 'relay');
+        break;
+      }
+
+      case 'COMPUTE_COMPLETE': {
+        setActiveExecution(event.payload);
+        addTimeline('COMPUTE_COMPLETE', `${event.payload?.agentType} done`, 'relay');
+        setTimeout(() => setActiveExecution(null), 10000);
+        break;
+      }
+
+      case 'QUICK_CAPTURE': {
+        const { text } = event.payload;
+        addTimeline('QUICK_CAPTURE', `"${text}"`, 'mobile');
+        addLog('Environment Sculptor', 'Quick capture from phone', `Thought synced: "${text}"`, 'Saved to scratchpad', 'Phone flow unblocked', 'Flow +15', 95);
+        break;
+      }
+
+      case 'HELP_REQUEST': {
+        addTimeline('HELP_REQUEST', 'Student stuck — requesting Socratic support', 'mobile');
+        addLog('Socratic Challenger', 'Help requested from phone', 'Student stuck on current task', 'Initiating Socratic Support', 'Retrieving context', 'Recovery +25', 100);
+
         setActiveExecution({
           agentType: "Socratic Challenger",
-          status: "Complete",
-          inputData: "I'm stuck on CS-4120 Compilers Parsing Algorithms",
-          result: { response }
+          status: "Processing",
+          inputData: "Student needs help"
         });
-        
-        // Hide it after 15 seconds
-        setTimeout(() => {
-          setActiveExecution(null);
-        }, 15000);
-      });
-      
-    } else if (event.event === 'COGNITIVE_STATE_REALTIME' && event.payload) {
-      const payload = event.payload as any;
-      if (payload.device_source === 'iqoo-mobile-client') {
-        const distScore = payload.distractionScore || 0;
-        let newState: CognitiveState = 'Flow';
-        if (distScore > 75) {
-          newState = 'Overloaded';
-        } else if (distScore > 50) {
-          newState = 'Distracted';
-        } else if (payload.fatigueScore > 60) {
-          newState = 'Fatigued';
-        }
-        
-        // Only update if it actually changed to avoid massive re-renders
-        setCognitiveState(prev => prev !== newState ? newState : prev);
-        
-        const newConf = (payload.flowConfidence || 0) / 100;
-        setConfidence(prev => Math.abs(prev - newConf) > 0.05 ? newConf : prev);
 
-        setMobileTelemetry({
-           accelX: payload.accelX,
-           accelY: payload.accelY,
-           accelZ: payload.accelZ,
-           touchBurstCount: payload.touchBurstCount,
-           backgroundTransitions: payload.backgroundTransitions,
-           distractionScore: payload.distractionScore,
-           fatigueScore: payload.fatigueScore
+        generateSocraticSupport("CS-4120 Compilers Parsing Algorithms").then((response) => {
+          setActiveExecution({
+            agentType: "Socratic Challenger",
+            status: "Complete",
+            inputData: "CS-4120 Compilers",
+            result: { response }
+          });
+          addTimeline('SOCRATIC_RESPONSE', 'LLM response received', 'relay');
+          setTimeout(() => setActiveExecution(null), 15000);
         });
+        break;
       }
+
+      case 'SHOW_DEBRIEF': {
+        setShowDebrief(true);
+        break;
+      }
+
+      case 'DEMO_SYNC': {
+        setLastDemoSync(event.payload);
+        break;
+      }
+
+      case 'DEMO_START': {
+        runDemoSequence();
+        setIsApexEnabled(true);
+        break;
+      }
+
+      default:
+        break;
     }
-  }, [lastMessage, addLog, runDemoSequence, isConnected, sendMessage]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastMessage]);
 
-  // ── Broadcast telemetry to server ───────────────────────
-  useEffect(() => {
-    if (!isConnected) return;
+  // ── Demo sequence (simplified — uses real events now) ──
+  const runDemoSequence = useCallback(() => {
+    // The demo now triggers state transitions that go through the real relay pipeline
+    addTimeline('DEMO_START', 'Controlled demo sequence initiated', 'desktop');
+    setShowPhoneOverlay(true);
+    setTimeout(() => setShowPhoneOverlay(false), 1500);
 
-    sendMessage('COGNITIVE_STATE_RAW', {
-      device_source: 'desktop-tauri-client',
-      heart_rate: telemetry.heartRate,
-      hrv: telemetry.hrv,
-      blink_rate_per_min: telemetry.blinkRate,
-      screen_interaction_density: telemetry.screenInteractionDensity,
-      active_application: telemetry.activeApp,
-      ambient_noise_db: telemetry.ambientDb,
-    });
-  }, [telemetry, isConnected, sendMessage]);
+    // Note: In production, demo controls on the PHONE should send real events through the pipeline.
+    // This local fallback exists only when phone is not connected.
+    if (!phoneConnected) {
+      // Simulate locally if no phone
+      setCognitiveState('Distracted');
+      setStateSource('demo');
+      setStateUpdatedAt(Date.now());
+      addTimeline('STATE_TRANSITION', 'Flow → Distracted (demo)', 'demo');
+      executeSculptorAction('Distracted', sendMessage);
+
+      setTimeout(() => {
+        setCognitiveState('Flow');
+        setStateSource('demo');
+        setStateUpdatedAt(Date.now());
+        addTimeline('STATE_TRANSITION', 'Distracted → Flow (demo)', 'demo');
+        executeSculptorAction('Flow', sendMessage);
+      }, 10000);
+    }
+  }, [phoneConnected, addTimeline, executeSculptorAction, sendMessage]);
+
+  const { telemetry, interpreted, setActiveApp } = useTelemetry(cognitiveState, {});
 
   // ── Auth ────────────────────────────────────────────────
-  const login = useCallback(
-    (token?: string) => {
-      const resolvedToken =
-        token?.trim() || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dummyUserToken';
-      setIsLoggedIn(true);
-      localStorage.setItem('apex_auth_token', resolvedToken);
-      connect(resolvedToken);
-      addLog('System', 'No active session', 'Valid credentials supplied', 'Authenticated user session', 'Connecting Office Kit', 'Network +1', 100);
-    },
-    [connect, addLog],
-  );
-
-  // ── Broadcast Context to Phone ───────────────────────────
-  useEffect(() => {
-    if (isConnected) {
-      sendMessage('DESKTOP_SYNC', {
-        workspace: engineInterpreted?.focusTrend === "Declining" ? "Social Media" : "CS-4120 Compilers"
-      });
-    }
-  }, [isConnected, engineInterpreted, sendMessage]);
+  const login = useCallback((_token?: string) => {
+    setIsLoggedIn(true);
+    connect();
+  }, [connect]);
 
   const logout = useCallback(() => {
     setIsLoggedIn(false);
-    localStorage.removeItem('apex_auth_token');
     disconnect();
-    addLog('System', 'Session active', 'Manual user logout', 'Cleared credentials', 'Office Kit session ended', 'Network 0', 100);
-  }, [disconnect, addLog]);
+  }, [disconnect]);
 
   // ── Memoised context value ──────────────────────────────
   const value = useMemo<AppContextValue>(
     () => ({
-      cognitiveState,
-      setCognitiveState,
-      confidence,
-      setConfidence,
-      adaptiveMode,
-      setAdaptiveMode,
-      isOptimizing,
-      triggerOptimization,
-      logs,
-      addLog,
-      networkLogs,
-      addNetworkLog,
-      isLoggedIn,
-      login,
-      logout,
-      isLocalMode,
-      telemetry,
-      interpreted: engineInterpreted ?? interpreted,
-      setActiveApp,
-      showDebrief,
-      setShowDebrief,
-      isApexEnabled,
-      setIsApexEnabled,
-      isConnected,
+      cognitiveState, setCognitiveState,
+      confidence, stateSource, stateUpdatedAt,
+      adaptiveMode, setAdaptiveMode,
+      isOptimizing, triggerOptimization,
+      sculptorAction,
+      logs, addLog,
+      networkLogs, addNetworkLog,
+      timeline,
+      connectionStatus, isConnected, sessionId, latencyMs, lastHeartbeat,
+      phoneConnected, phoneDeviceName: phoneDevice?.device_name ?? null,
+      isLoggedIn, login, logout,
+      telemetry, interpreted, setActiveApp,
+      showDebrief, setShowDebrief,
+      isApexEnabled, setIsApexEnabled,
       activeExecution,
-      lastDemoSync,
       mobileTelemetry,
-      runDemoSequence,
-      showPhoneOverlay,
+      lastDemoSync,
+      runDemoSequence, showPhoneOverlay,
     }),
     [
-      cognitiveState,
-      confidence,
-      adaptiveMode,
-      isOptimizing,
-      logs,
-      networkLogs,
-      isLoggedIn,
-      login,
-      isLocalMode,
-      logout,
-      runDemoSequence,
-      showPhoneOverlay,
-      telemetry,
-      engineInterpreted,
-      interpreted,
-      setActiveApp,
-      showDebrief,
-      isApexEnabled,
-      isConnected,
-      activeExecution,
+      cognitiveState, confidence, stateSource, stateUpdatedAt,
+      adaptiveMode, isOptimizing, triggerOptimization,
+      sculptorAction,
+      logs, addLog,
+      networkLogs, addNetworkLog,
+      timeline,
+      connectionStatus, isConnected, sessionId, latencyMs, lastHeartbeat,
+      phoneConnected, phoneDevice,
+      isLoggedIn, login, logout,
+      telemetry, interpreted, setActiveApp,
+      showDebrief, isApexEnabled,
+      activeExecution, mobileTelemetry,
       lastDemoSync,
-      mobileTelemetry,
+      runDemoSequence, showPhoneOverlay,
     ],
   );
 

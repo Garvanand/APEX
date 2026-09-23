@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../services/websocket_service.dart';
 
 class ApexPulsePage extends StatefulWidget {
@@ -12,6 +11,7 @@ class ApexPulsePage extends StatefulWidget {
 class _ApexPulsePageState extends State<ApexPulsePage> with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
   late Animation<double> _scaleAnimation;
+  final _ws = WebSocketService();
 
   @override
   void initState() {
@@ -34,13 +34,15 @@ class _ApexPulsePageState extends State<ApexPulsePage> with SingleTickerProvider
 
   @override
   Widget build(BuildContext context) {
-    final wsService = context.watch<WebSocketService>();
-    final confidence = (wsService.confidenceScore * 100).round();
-    final stateStr = wsService.cognitiveState.toUpperCase();
+    return ListenableBuilder(
+      listenable: _ws,
+      builder: (context, _) {
+        final confidence = (_ws.confidenceScore * 100).round();
+        final stateStr = _ws.cognitiveState.toUpperCase();
 
-    // Determine colors
-    final isFlow = stateStr == 'FLOW';
-    final accentColor = isFlow ? const Color(0xFFFFD400) : const Color(0xFFFFFFFF);
+        // Determine colors
+        final isFlow = stateStr == 'FLOW';
+        final accentColor = isFlow ? const Color(0xFFFFD400) : const Color(0xFFFFFFFF);
 
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
@@ -67,7 +69,7 @@ class _ApexPulsePageState extends State<ApexPulsePage> with SingleTickerProvider
                     width: 8,
                     height: 8,
                     decoration: BoxDecoration(
-                      color: wsService.isConnected ? const Color(0xFFFFD400) : Colors.red,
+                      color: _ws.isConnected ? const Color(0xFFFFD400) : Colors.red,
                       shape: BoxShape.circle,
                     ),
                   )
@@ -168,6 +170,8 @@ class _ApexPulsePageState extends State<ApexPulsePage> with SingleTickerProvider
           ),
         ),
       ),
+    );
+      },
     );
   }
 

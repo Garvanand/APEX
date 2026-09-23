@@ -5,7 +5,7 @@ import '../models/cognitive_state.dart';
 
 class ApiService {
   // Targeting localhost for local emulator dev runs; override for real devices
-  static const String baseUrl = 'http://10.0.2.2:8000/api/v1'; // 10.0.2.2 points to host machine from Android Emulator
+  static const String defaultBaseUrl = 'http://10.0.2.2:8000/api/v1'; // 10.0.2.2 points to host machine from Android Emulator
 
   Future<bool> register(String email, String password, String firstName, String lastName) async {
     final response = await http.post(
@@ -85,5 +85,35 @@ class ApiService {
   Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('jwt_token');
+  }
+
+  String get baseUrl => ApiService.defaultBaseUrl;
+
+  Future<void> setToken(String token) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('jwt_token', token);
+  }
+
+  Future<http.Response> post(String endpoint, dynamic body) async {
+    final token = await getToken();
+    return http.post(
+      Uri.parse('$baseUrl$endpoint'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      },
+      body: json.encode(body),
+    );
+  }
+
+  Future<http.Response> get(String endpoint) async {
+    final token = await getToken();
+    return http.get(
+      Uri.parse('$baseUrl$endpoint'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      },
+    );
   }
 }

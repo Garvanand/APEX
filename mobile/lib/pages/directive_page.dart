@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../services/websocket_service.dart';
 
 class DirectivePage extends StatelessWidget {
@@ -7,9 +6,12 @@ class DirectivePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final wsService = context.watch<WebSocketService>();
-    final isFlow = wsService.cognitiveState.toUpperCase() == 'FLOW';
-    final accentColor = isFlow ? const Color(0xFFFFD400) : const Color(0xFFFFFFFF);
+    final ws = WebSocketService();
+    return ListenableBuilder(
+      listenable: ws,
+      builder: (context, _) {
+        final isFlow = ws.cognitiveState.toUpperCase() == 'FLOW';
+        final accentColor = isFlow ? const Color(0xFFFFD400) : const Color(0xFFFFFFFF);
 
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
@@ -125,6 +127,8 @@ class DirectivePage extends StatelessWidget {
           ),
         ),
       ),
+    );
+      },
     );
   }
 }

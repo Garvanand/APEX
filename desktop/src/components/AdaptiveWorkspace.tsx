@@ -17,7 +17,7 @@ import WorkspaceStoryEngine from "./WorkspaceStoryEngine";
 import DesktopAgentMonitor from "./DesktopAgentMonitor";
 
 export default function AdaptiveWorkspace() {
-  const { cognitiveState, confidence, logs, addLog, telemetry, interpreted, adaptiveMode, setAdaptiveMode, triggerOptimization, isApexEnabled, lastDemoSync } = useAppContext();
+  const { cognitiveState, confidence, logs, addLog, telemetry, interpreted, adaptiveMode, setAdaptiveMode, triggerOptimization, isApexEnabled, setIsApexEnabled } = useAppContext();
   const { override } = useDemoState();
   
   // Right panel states
@@ -171,11 +171,18 @@ export default function AdaptiveWorkspace() {
                     Scan to Bridge iQOO Office Kit
                   </p>
                   <div className="p-4 bg-white rounded-lg shadow-sm">
-                    <QRCodeSVG value={`http://${localIp}:8080`} size={180} fgColor="#000000" bgColor="#FFFFFF" />
+                    <QRCodeSVG value={`http://${localIp}:8080/mobile/`} size={180} fgColor="#000000" bgColor="#FFFFFF" />
                   </div>
                   <p className="mt-4 text-xs font-mono text-gray-500">
                     IP: {localIp}
                   </p>
+                  <button
+                    onClick={() => setIsApexEnabled(true)}
+                    className="mt-4 px-6 py-2.5 bg-black hover:bg-neutral-800 text-white font-bold text-xs uppercase tracking-wider rounded-lg transition-all shadow-md flex items-center gap-2 cursor-pointer"
+                  >
+                    <Zap className="w-4 h-4 text-yellow-400" />
+                    Enter Workspace (Activate APEX)
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -209,7 +216,6 @@ export default function AdaptiveWorkspace() {
               <button
                 onClick={() => { 
                   setAdaptiveMode("flow");
-                  setCognitiveState("Flow");
                 }}
                 className={`px-4 py-2 ${cognitiveState === "Overloaded" ? "bg-danger hover:bg-danger/80" : "bg-warning hover:bg-warning/80"} text-black text-xs font-bold rounded-lg transition-colors`}
               >
@@ -244,7 +250,7 @@ export default function AdaptiveWorkspace() {
                   cognitiveState === 'Distracted' ? 'bg-warning' :
                   cognitiveState === 'Fatigued' ? 'bg-accent' : 'bg-danger'
                 }`} />
-                {lastDemoSync?.step === 3 || lastDemoSync?.step === 4 ? (
+                {override.showPeerRadar || override.showSocraticChallenge ? (
                   <motion.div 
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -253,11 +259,11 @@ export default function AdaptiveWorkspace() {
                     <div className="flex items-center gap-2 mb-1">
                       <Cpu className="w-4 h-4 text-accent animate-pulse" />
                       <span className="text-xs font-bold font-mono tracking-widest text-accent uppercase">
-                        {lastDemoSync.step === 3 ? "Peer Radar Active" : "Socratic Challenger Active"}
+                        {override.showPeerRadar ? "Peer Radar Active" : "Socratic Challenger Active"}
                       </span>
                     </div>
                     <span className="text-xs font-mono text-white/80 animate-pulse">
-                      {lastDemoSync.step === 3 
+                      {override.showPeerRadar 
                         ? "Analyzing 42 discussion messages... Building concept graph..." 
                         : "Processing reading material... Generating validation questions..."}
                     </span>

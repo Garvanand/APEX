@@ -68,7 +68,7 @@ const PrettyAgentOutput = ({ agentType, result }: { agentType: string, result: a
 };
 
 export default function DesktopAgentMonitor() {
-  const { activeExecution, isConnected } = useAppContext();
+  const { activeExecution, isConnected, latencyMs } = useAppContext();
 
   if (!activeExecution) return null;
 
@@ -86,7 +86,7 @@ export default function DesktopAgentMonitor() {
         </div>
         <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-accent/10 border border-accent/20">
           <Activity className="w-3 h-3 text-accent" />
-          <span className="text-[10px] text-accent font-bold">12ms RTT</span>
+          <span className="text-[10px] text-accent font-bold">{latencyMs > 0 ? `${latencyMs}ms RTT` : 'Direct P2P'}</span>
         </div>
       </div>
 

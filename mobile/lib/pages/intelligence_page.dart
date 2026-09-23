@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../services/websocket_service.dart';
 
 class IntelligencePage extends StatelessWidget {
@@ -7,8 +6,8 @@ class IntelligencePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final wsService = context.watch<WebSocketService>();
-    final isFlow = wsService.cognitiveState.toUpperCase() == 'FLOW';
+    final wsService = WebSocketService();
+    final isFlow = (wsService.activeCognitiveState ?? 'FLOW').toUpperCase() == 'FLOW';
     final accentColor = isFlow ? const Color(0xFFFFD400) : const Color(0xFFFFFFFF);
 
     return Scaffold(

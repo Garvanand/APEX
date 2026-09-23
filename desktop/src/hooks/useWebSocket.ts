@@ -1,34 +1,54 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { WebSocketEvent } from '../types';
-import { mockEngine } from '../mocks/MockDataEngine';
 
 // ─────────────────────────────────────────────────────────────
-// useWebSocket — connection lifecycle with auto-reconnect
+// Connection States
+// ─────────────────────────────────────────────────────────────
+export type ConnectionStatus = 'offline' | 'connecting' | 'connected' | 'degraded' | 'reconnecting';
+
+// ─────────────────────────────────────────────────────────────
+// useWebSocket — real connection lifecycle with handshake
 // ─────────────────────────────────────────────────────────────
 
 interface UseWebSocketOptions {
-  /** Base WebSocket URL without query params. */
   url?: string;
-  /** Maximum reconnection attempts before giving up. */
   maxRetries?: number;
-  /** Base delay (ms) for exponential backoff. */
   baseDelay?: number;
-  /** Called whenever the connection status changes. */
-  onConnectionChange?: (connected: boolean) => void;
+  onConnectionChange?: (status: ConnectionStatus) => void;
+}
+
+interface ConnectedDevice {
+  session_id: string;
+  device_id: string;
+  device_type: string;
+  device_name: string;
+  connected_at: number;
 }
 
 interface UseWebSocketReturn {
+  connectionStatus: ConnectionStatus;
   isConnected: boolean;
-  connect: (token: string) => void;
+  connect: () => void;
   disconnect: () => void;
   sendMessage: <T>(event: string, payload: T) => void;
   lastMessage: WebSocketEvent | null;
-  isLocalMode: boolean;
+  // Session info
+  sessionId: string | null;
+  deviceId: string | null;
+  // Latency
+  latencyMs: number;
+  lastHeartbeat: number | null;
+  // Connected devices
+  connectedDevices: ConnectedDevice[];
+  // Phone specifically
+  phoneConnected: boolean;
+  phoneDevice: ConnectedDevice | null;
 }
 
-const DEFAULT_URL = 'ws://127.0.0.1:8000/api/v1/cognitive/stream';
-const MAX_RETRIES = 3;
+const DEFAULT_URL = 'ws://127.0.0.1:8080/ws';
+const MAX_RETRIES = 10;
 const BASE_DELAY_MS = 1000;
+const PING_INTERVAL_MS = 3000;
 
 export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketReturn {
   const {
@@ -38,143 +58,221 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     onConnectionChange,
   } = options;
 
-  const [isConnected, setIsConnected] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('offline');
   const [lastMessage, setLastMessage] = useState<WebSocketEvent | null>(null);
-  const [isLocalMode, setIsLocalMode] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [latencyMs, setLatencyMs] = useState(0);
+  const [lastHeartbeat, setLastHeartbeat] = useState<number | null>(null);
+  const [connectedDevices, setConnectedDevices] = useState<ConnectedDevice[]>([]);
 
   const wsRef = useRef<WebSocket | null>(null);
   const retriesRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const tokenRef = useRef<string>('');
+  const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pingTimestampRef = useRef<number>(0);
   const intentionalCloseRef = useRef(false);
-  const isUsingMockRef = useRef(false);
+  const handshakeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Sync connection status with optional callback
-  const updateConnectionStatus = useCallback(
-    (connected: boolean) => {
-      setIsConnected(connected);
-      onConnectionChange?.(connected);
+  const updateStatus = useCallback(
+    (status: ConnectionStatus) => {
+      setConnectionStatus(status);
+      onConnectionChange?.(status);
     },
     [onConnectionChange],
   );
 
-  const clearRetryTimer = useCallback(() => {
-    if (retryTimerRef.current !== null) {
+  const clearTimers = useCallback(() => {
+    if (retryTimerRef.current) {
       clearTimeout(retryTimerRef.current);
       retryTimerRef.current = null;
     }
+    if (pingTimerRef.current) {
+      clearInterval(pingTimerRef.current);
+      pingTimerRef.current = null;
+    }
+    if (handshakeTimeoutRef.current) {
+      clearTimeout(handshakeTimeoutRef.current);
+      handshakeTimeoutRef.current = null;
+    }
   }, []);
 
-  const createConnection = useCallback(
-    (token: string) => {
-      // Teardown any previous socket
-      if (wsRef.current) {
-        wsRef.current.onopen = null;
-        wsRef.current.onmessage = null;
-        wsRef.current.onclose = null;
-        wsRef.current.onerror = null;
-        wsRef.current.close();
-        wsRef.current = null;
+  // ── Start ping/pong heartbeat ──────────────────────────
+  const startPingLoop = useCallback(() => {
+    if (pingTimerRef.current) clearInterval(pingTimerRef.current);
+    pingTimerRef.current = setInterval(() => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        pingTimestampRef.current = Date.now();
+        wsRef.current.send(JSON.stringify({
+          event: 'PING',
+          payload: { timestamp: pingTimestampRef.current }
+        }));
       }
+    }, PING_INTERVAL_MS);
+  }, []);
 
-      try {
-        if (import.meta.env.VITE_APEX_DEMO_MODE === "true" || isUsingMockRef.current) {
-          throw new Error("Forcing Mock Engine Fallback");
-        }
-        
-        const ws = new WebSocket(`${url}?token=${token}`);
+  // ── Handle incoming messages ───────────────────────────
+  const handleMessage = useCallback((event: MessageEvent) => {
+    try {
+      const data = JSON.parse(event.data);
+      const eventType = data.event;
 
-        ws.onopen = () => {
+      switch (eventType) {
+        case 'HANDSHAKE_ACK': {
+          const payload = data.payload;
+          setSessionId(payload.session_id);
+          setDeviceId(payload.device_id);
+          if (payload.connected_devices) {
+            setConnectedDevices(payload.connected_devices);
+          }
+          updateStatus('connected');
           retriesRef.current = 0;
-          updateConnectionStatus(true);
-        };
-
-        ws.onmessage = (event: MessageEvent) => {
-          try {
-            const parsed = JSON.parse(event.data) as WebSocketEvent;
-            setLastMessage(parsed);
-          } catch {
-            console.error('[useWebSocket] Failed to parse incoming message');
+          startPingLoop();
+          console.log(`[WS] Handshake complete. Session: ${payload.session_id}`);
+          
+          // Clear handshake timeout
+          if (handshakeTimeoutRef.current) {
+            clearTimeout(handshakeTimeoutRef.current);
+            handshakeTimeoutRef.current = null;
           }
-        };
+          break;
+        }
 
-        ws.onerror = (err: Event) => {
-          console.error('[useWebSocket] Connection error', err);
-        };
+        case 'PONG': {
+          const rtt = Date.now() - (data.payload?.client_timestamp || pingTimestampRef.current);
+          setLatencyMs(rtt);
+          setLastHeartbeat(Date.now());
+          break;
+        }
 
-        ws.onclose = () => {
-          updateConnectionStatus(false);
-          wsRef.current = null;
+        case 'DEVICE_CONNECTED': {
+          const dev = data.payload;
+          setConnectedDevices(prev => {
+            const filtered = prev.filter(d => d.session_id !== dev.session_id);
+            return [...filtered, {
+              session_id: dev.session_id,
+              device_id: dev.device_id,
+              device_type: dev.device_type,
+              device_name: dev.device_name,
+              connected_at: dev.connected_at,
+            }];
+          });
+          // Forward as a regular message too for AppContext
+          setLastMessage(data as WebSocketEvent);
+          break;
+        }
 
-          // Auto-reconnect unless the close was intentional
-          if (!intentionalCloseRef.current && retriesRef.current < maxRetries) {
-            const delay = baseDelay * Math.pow(2, retriesRef.current);
-            retriesRef.current += 1;
-            retryTimerRef.current = setTimeout(() => {
-              createConnection(tokenRef.current);
-            }, delay);
-          } else if (!intentionalCloseRef.current && retriesRef.current >= maxRetries) {
-            // FALLBACK TO MOCK ENGINE
-            console.warn("[useWebSocket] Max retries reached. Falling back to MockDataEngine LOCAL MODE.");
-            isUsingMockRef.current = true;
-            setIsLocalMode(true);
-            createConnection(tokenRef.current);
-          }
-        };
+        case 'DEVICE_DISCONNECTED': {
+          const devId = data.payload?.session_id;
+          setConnectedDevices(prev => prev.filter(d => d.session_id !== devId));
+          setLastMessage(data as WebSocketEvent);
+          break;
+        }
 
-        wsRef.current = ws;
-      } catch (err) {
-        console.warn('[useWebSocket] Switching to MockDataEngine', err);
-        isUsingMockRef.current = true;
-        setIsLocalMode(true);
-        
-        const mockListener = (event: MessageEvent) => {
-          try {
-            const parsed = JSON.parse(event.data) as WebSocketEvent;
-            setLastMessage(parsed);
-          } catch {
-            console.error("Mock parse failed");
-          }
-        };
-        
-        mockEngine.subscribe(mockListener);
-        mockEngine.start();
-        updateConnectionStatus(true); // Faked as connected
-        
-        // We hijack the onclose cleanup reference to also stop the mock
-        wsRef.current = {
-          readyState: WebSocket.OPEN,
-          send: (data: string) => { console.log("[Mock WS Send]", data); },
-          close: () => {
-            mockEngine.unsubscribe(mockListener);
-            mockEngine.stop();
-          }
-        } as unknown as WebSocket;
+        default:
+          // Forward all other events to consumers
+          setLastMessage(data as WebSocketEvent);
+          break;
       }
-    },
-    [url, maxRetries, baseDelay, updateConnectionStatus],
-  );
+    } catch {
+      console.error('[WS] Failed to parse incoming message');
+    }
+  }, [updateStatus, startPingLoop]);
 
-  const connect = useCallback(
-    (token: string) => {
-      intentionalCloseRef.current = false;
-      retriesRef.current = 0;
-      tokenRef.current = token;
-      clearRetryTimer();
-      createConnection(token);
-    },
-    [createConnection, clearRetryTimer],
-  );
+  // ── Create connection ──────────────────────────────────
+  const createConnection = useCallback(() => {
+    // Teardown any previous socket
+    if (wsRef.current) {
+      wsRef.current.onopen = null;
+      wsRef.current.onmessage = null;
+      wsRef.current.onclose = null;
+      wsRef.current.onerror = null;
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+
+    updateStatus('connecting');
+
+    try {
+      const ws = new WebSocket(url);
+
+      ws.onopen = () => {
+        console.log('[WS] TCP connected, sending HANDSHAKE...');
+        // Send handshake — do NOT report connected yet
+        ws.send(JSON.stringify({
+          event: 'HANDSHAKE',
+          payload: {
+            device_type: 'desktop',
+            device_name: 'APEX Desktop Console',
+            platform: 'tauri_react',
+            version: '1.0.0',
+          }
+        }));
+
+        // Set handshake timeout
+        handshakeTimeoutRef.current = setTimeout(() => {
+          if (connectionStatus === 'connecting') {
+            console.warn('[WS] Handshake timeout — no HANDSHAKE_ACK received');
+            ws.close();
+          }
+        }, 5000);
+      };
+
+      ws.onmessage = handleMessage;
+
+      ws.onerror = (err: Event) => {
+        console.error('[WS] Connection error', err);
+      };
+
+      ws.onclose = () => {
+        clearTimers();
+        wsRef.current = null;
+
+        if (!intentionalCloseRef.current) {
+          if (retriesRef.current < maxRetries) {
+            const delay = baseDelay * Math.pow(2, Math.min(retriesRef.current, 5));
+            retriesRef.current += 1;
+            updateStatus('reconnecting');
+            console.log(`[WS] Reconnecting in ${delay}ms (attempt ${retriesRef.current}/${maxRetries})`);
+            retryTimerRef.current = setTimeout(() => {
+              createConnection();
+            }, delay);
+          } else {
+            console.error('[WS] Max reconnection attempts reached.');
+            updateStatus('offline');
+          }
+        } else {
+          updateStatus('offline');
+        }
+      };
+
+      wsRef.current = ws;
+    } catch (err) {
+      console.error('[WS] Failed to create WebSocket:', err);
+      updateStatus('offline');
+    }
+  }, [url, maxRetries, baseDelay, updateStatus, handleMessage, clearTimers, connectionStatus]);
+
+  // ── Public API ─────────────────────────────────────────
+  const connect = useCallback(() => {
+    intentionalCloseRef.current = false;
+    retriesRef.current = 0;
+    clearTimers();
+    createConnection();
+  }, [createConnection, clearTimers]);
 
   const disconnect = useCallback(() => {
     intentionalCloseRef.current = true;
-    clearRetryTimer();
+    clearTimers();
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
     }
-    updateConnectionStatus(false);
-  }, [clearRetryTimer, updateConnectionStatus]);
+    updateStatus('offline');
+    setSessionId(null);
+    setDeviceId(null);
+    setConnectedDevices([]);
+  }, [clearTimers, updateStatus]);
 
   const sendMessage = useCallback(<T,>(event: string, payload: T) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -186,13 +284,31 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   useEffect(() => {
     return () => {
       intentionalCloseRef.current = true;
-      clearRetryTimer();
+      clearTimers();
       if (wsRef.current) {
-        wsRef.current.onclose = null; // prevent reconnect on unmount
+        wsRef.current.onclose = null;
         wsRef.current.close();
       }
     };
-  }, [clearRetryTimer]);
+  }, [clearTimers]);
 
-  return { isConnected, connect, disconnect, sendMessage, lastMessage, isLocalMode };
+  // Derived: is a phone connected?
+  const phoneDevice = connectedDevices.find(d => d.device_type === 'mobile') || null;
+  const phoneConnected = phoneDevice !== null;
+
+  return {
+    connectionStatus,
+    isConnected: connectionStatus === 'connected' || connectionStatus === 'degraded',
+    connect,
+    disconnect,
+    sendMessage,
+    lastMessage,
+    sessionId,
+    deviceId,
+    latencyMs,
+    lastHeartbeat,
+    connectedDevices,
+    phoneConnected,
+    phoneDevice,
+  };
 }

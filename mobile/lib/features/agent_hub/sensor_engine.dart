@@ -15,6 +15,16 @@ class SensorEngine extends ChangeNotifier {
   int flowConfidence = 100;
   int fatigueScore = 0;
 
+  // ── Cognitive State Machine with Hysteresis ──────────
+  String committedState = 'FLOW';
+  String predictedState = 'FLOW';
+  int confidence = 95;
+  String transitionReason = 'Equilibrium maintained';
+  int _sustainedStateCycles = 0;
+  String _pendingState = 'FLOW';
+
+  Function(String newState, String reason, int confidence)? onStateCommitted;
+
   bool isScreenOn = true;
   int touchBurstCount = 0;
   int backgroundTransitions = 0;
@@ -36,6 +46,7 @@ class SensorEngine extends ChangeNotifier {
   final List<StreamSubscription> _subs = [];
 
   bool _isSimulated = false;
+  bool get isRealSensor => !_isSimulated;
   final Random _random = Random();
 
   void start() {
@@ -191,15 +202,36 @@ class SensorEngine extends ChangeNotifier {
       if (touchBurstCount < 0) touchBurstCount = 0;
     }
 
-    // Bounds
-    distractionScore = distractionScore.clamp(0, 100);
-    flowConfidence = (100 - distractionScore).clamp(0, 100);
-    
-    // Fatigue goes up slowly if distracted
-    if (distractionScore > 50) {
-      fatigueScore = (fatigueScore + 1).clamp(0, 100);
-    } else if (distractionScore < 20) {
-      fatigueScore = (fatigueScore - 1).clamp(0, 100);
+    // Evaluate predicted state
+    String rawState = 'FLOW';
+    String reason = 'Interaction rhythm is calm and focused';
+    if (distractionScore > 75) {
+      rawState = 'OVERLOADED';
+      reason = 'Severe distraction combined with frequent context switching';
+    } else if (distractionScore > 45) {
+      rawState = 'DISTRACTED';
+      reason = 'Erratic touch bursts and excessive movement detected';
+    } else if (fatigueScore > 60) {
+      rawState = 'FATIGUED';
+      reason = 'Extended session duration without recovery';
+    }
+
+    predictedState = rawState;
+
+    // Hysteresis: require 3 consecutive evaluation cycles (1.5s) before committing
+    if (rawState == _pendingState) {
+      _sustainedStateCycles++;
+      if (_sustainedStateCycles >= 3 && committedState != rawState) {
+        committedState = rawState;
+        transitionReason = reason;
+        confidence = rawState == 'FLOW' ? flowConfidence : (rawState == 'DISTRACTED' ? distractionScore : fatigueScore);
+        if (onStateCommitted != null) {
+          onStateCommitted!(committedState, transitionReason, confidence);
+        }
+      }
+    } else {
+      _pendingState = rawState;
+      _sustainedStateCycles = 1;
     }
 
     notifyListeners();

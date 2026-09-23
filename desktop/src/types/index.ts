@@ -23,6 +23,7 @@ export interface AgentLog {
   id: string;
   time: string; // timestamp
   agent: string;
+  trigger?: string;
   problem: string;
   reason: string;
   action: string;
