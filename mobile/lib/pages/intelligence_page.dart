@@ -7,7 +7,7 @@ class IntelligencePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final wsService = WebSocketService();
-    final isFlow = (wsService.activeCognitiveState ?? 'FLOW').toUpperCase() == 'FLOW';
+    final isFlow = wsService.activeCognitiveState.toUpperCase() == 'FLOW';
     final accentColor = isFlow ? const Color(0xFFFFD400) : const Color(0xFFFFFFFF);
 
     return Scaffold(

@@ -219,7 +219,11 @@ export function AppProvider({ children }: AppProviderProps) {
   }, []);
 
   // ── Sculptor lifecycle ──────────────────────────────────
-  const executeSculptorAction = useCallback((state: CognitiveState, sendMessage: <T>(event: string, payload: T) => void) => {
+  const executeSculptorAction = useCallback((
+    state: CognitiveState,
+    sendMessage: <T>(event: string, payload: T) => void,
+    correlationId?: string
+  ) => {
     let action = '';
     let trigger = `State changed to ${state}`;
 
@@ -249,13 +253,24 @@ export function AppProvider({ children }: AppProviderProps) {
     setTimeout(() => {
       setSculptorAction(prev => ({ ...prev, status: 'executing' }));
       addTimeline('SCULPTOR_EXECUTING', action, 'desktop');
+      sendMessage('SCULPTOR_ACTION_EXECUTING', {
+        action,
+        state,
+        correlation_id: correlationId,
+        timestamp: Date.now(),
+      });
     }, 150);
 
     // COMPLETED (after 550ms) + send ACK to relay
     setTimeout(() => {
       setSculptorAction(prev => ({ ...prev, status: 'completed' }));
       addTimeline('SCULPTOR_COMPLETED', action, 'desktop');
-      sendMessage('SCULPTOR_ACTION_EXECUTED', { action, state, timestamp: Date.now() });
+      sendMessage('SCULPTOR_ACTION_EXECUTED', {
+        action,
+        state,
+        correlation_id: correlationId,
+        timestamp: Date.now(),
+      });
     }, 550);
 
     // Back to idle after 3.5s
@@ -318,6 +333,7 @@ export function AppProvider({ children }: AppProviderProps) {
   // ── Trigger Cognitive State from Desktop ─────────────────
   const triggerCognitiveState = useCallback((targetState: CognitiveState, reason: string = 'Manual desktop trigger') => {
     const prevState = cognitiveState;
+    const correlationId = `corr-desktop-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     setCognitiveState(targetState);
     setConfidence(0.95);
     setStateSource('desktop_manual');
@@ -340,6 +356,7 @@ export function AppProvider({ children }: AppProviderProps) {
       state: targetState,
       previousState: prevState,
       source_device: 'desktop',
+      correlation_id: correlationId,
       timestamp: Date.now(),
     });
 
@@ -350,11 +367,12 @@ export function AppProvider({ children }: AppProviderProps) {
       reason,
       device_source: 'apex-desktop-tauri-node',
       source: 'desktop',
+      correlation_id: correlationId,
       timestamp: Date.now(),
     });
 
     // Trigger sculptor
-    executeSculptorAction(targetState, sendMessage);
+    executeSculptorAction(targetState, sendMessage, correlationId);
   }, [cognitiveState, addTimeline, addLog, sendMessage, executeSculptorAction]);
 
   // ── Auto-connect on mount ──────────────────────────────
@@ -387,6 +405,7 @@ export function AppProvider({ children }: AppProviderProps) {
           ? (event.payload.confidence > 1 ? event.payload.confidence / 100 : event.payload.confidence)
           : 0.94;
         const sourceDev = event.payload?.source_device || event.payload?.device_name || 'mobile';
+        const correlationId = event.payload?.correlation_id || (event as any).correlation_id || (event as any).event_id;
         const prevState = cognitiveState;
 
         setCognitiveState(targetState);
@@ -411,16 +430,18 @@ export function AppProvider({ children }: AppProviderProps) {
           state: targetState,
           previousState: prevState,
           source_device: 'desktop',
+          correlation_id: correlationId,
           timestamp: Date.now(),
         });
 
         // Trigger sculptor
-        executeSculptorAction(targetState, sendMessage);
+        executeSculptorAction(targetState, sendMessage, correlationId);
         break;
       }
 
       case 'STATE_TRANSITION': {
         const { state, confidence: conf, source_device } = event.payload;
+        const correlationId = event.payload?.correlation_id || (event as any).correlation_id;
         const targetState = normalizeCognitiveState(state);
         const prevState = cognitiveState;
         setCognitiveState(targetState);
@@ -434,7 +455,7 @@ export function AppProvider({ children }: AppProviderProps) {
 
         // Trigger sculptor
         if (targetState !== prevState) {
-          executeSculptorAction(targetState, sendMessage);
+          executeSculptorAction(targetState, sendMessage, correlationId);
         }
         break;
       }

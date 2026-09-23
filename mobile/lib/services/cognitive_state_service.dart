@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'api_service.dart';
 
 class CognitiveStateService {
@@ -28,9 +27,7 @@ class CognitiveStateService {
   Future<Map<String, dynamic>?> getCurrentState() async {
     try {
       final response = await _apiService.get('/cognitive/status');
-      if (response != null) {
-        return jsonDecode(response.body);
-      }
+      return jsonDecode(response.body);
     } catch (e) {
       print('Failed to get cognitive state: $e');
     }

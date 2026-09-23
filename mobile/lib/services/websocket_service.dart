@@ -26,6 +26,44 @@ enum PipelineStage {
   ackReceived,
 }
 
+/// Represents a fully correlated, timestamped transaction across the 5-stage pipeline
+class TransactionLedgerRecord {
+  final String transactionId;
+  final String state;
+  final double confidence;
+  final String reason;
+  final DateTime startTime;
+  DateTime? relayAckTime;
+  DateTime? desktopUpdateTime;
+  DateTime? sculptorExecutingTime;
+  DateTime? executionConfirmationTime;
+  int? totalDurationMs;
+  bool isCompleted;
+  bool isFailed;
+  String? sculptorAction;
+
+  TransactionLedgerRecord({
+    required this.transactionId,
+    required this.state,
+    required this.confidence,
+    required this.reason,
+    required this.startTime,
+    this.relayAckTime,
+    this.desktopUpdateTime,
+    this.sculptorExecutingTime,
+    this.executionConfirmationTime,
+    this.totalDurationMs,
+    this.isCompleted = false,
+    this.isFailed = false,
+    this.sculptorAction,
+  });
+
+  int? get relayOffsetMs => relayAckTime?.difference(startTime).inMilliseconds;
+  int? get desktopOffsetMs => desktopUpdateTime?.difference(startTime).inMilliseconds;
+  int? get sculptorExecutingOffsetMs => sculptorExecutingTime?.difference(startTime).inMilliseconds;
+  int? get executionConfirmationOffsetMs => executionConfirmationTime?.difference(startTime).inMilliseconds;
+}
+
 class WebSocketService extends ChangeNotifier {
   static final WebSocketService _instance = WebSocketService._internal();
   factory WebSocketService() => _instance;
@@ -61,9 +99,27 @@ class WebSocketService extends ChangeNotifier {
   String? deviceId;
   List<Map<String, dynamic>> connectedDevices = [];
 
-  // ── Real Latency & Timestamps ─────────────────────────
-  int _latencyMs = 0;
-  int get latencyMs => _latencyMs;
+  // ── Correlation & Transaction Ledger ─────────────────
+  final List<TransactionLedgerRecord> transactionLedger = [];
+  TransactionLedgerRecord? activeTransaction;
+  String? activeCorrelationId;
+
+  // ── Bidirectional Tracking ───────────────────────────
+  DateTime? lastDesktopEventTime;
+  String? lastDesktopEventState;
+  bool get hasRecentDesktopEvent =>
+      lastDesktopEventTime != null &&
+      DateTime.now().difference(lastDesktopEventTime!).inSeconds < 5;
+  bool get isUplinkConnected => isConnected;
+  bool get isDownlinkConnected =>
+      isConnected && connectedDevices.any((d) => d['device_type'] == 'desktop');
+
+  // ── Network RTT vs Transaction RTT ───────────────────
+  int _networkRttMs = 0;
+  int get networkRttMs => _networkRttMs;
+  int get latencyMs => _networkRttMs; // backward compatibility
+  int? _transactionRttMs;
+  int? get transactionRttMs => _transactionRttMs;
   DateTime? _lastPingSent;
   DateTime? _lastSync;
   DateTime? get lastSync => _lastSync;
@@ -216,10 +272,20 @@ class WebSocketService extends ChangeNotifier {
           break;
 
         case 'STATE_TRANSITION_ACK':
-          _lastAck = DateTime.now();
-          lastEventAckedTime = _lastAck;
-          if (lastEventSentTime != null && roundTripDurationMs == null) {
-            roundTripDurationMs = _lastAck!.difference(lastEventSentTime!).inMilliseconds;
+          final ackTime = DateTime.now();
+          _lastAck = ackTime;
+          lastEventAckedTime = ackTime;
+          final corrId = data['payload']?['correlation_id'] ?? data['correlation_id'];
+          TransactionLedgerRecord? targetTx;
+          if (corrId != null) {
+            targetTx = transactionLedger.cast<TransactionLedgerRecord?>().firstWhere(
+              (t) => t?.transactionId == corrId,
+              orElse: () => null,
+            );
+          }
+          targetTx ??= activeTransaction;
+          if (targetTx != null) {
+            targetTx.relayAckTime = ackTime;
           }
           _lastEventAcked = 'RELAY_RECEIVED';
           _eventsAcked++;
@@ -229,34 +295,81 @@ class WebSocketService extends ChangeNotifier {
           break;
 
         case 'DESKTOP_STATE_CHANGED':
-          pipelineStage = PipelineStage.desktopUpdated;
+          final desktopTime = DateTime.now();
+          lastDesktopEventTime = desktopTime;
           if (data['payload']?['state'] != null) {
-            activeCognitiveState = data['payload']['state'].toString().toUpperCase();
+            lastDesktopEventState = data['payload']['state'].toString().toUpperCase();
+            activeCognitiveState = lastDesktopEventState!;
           }
+          final corrId = data['payload']?['correlation_id'] ?? data['correlation_id'];
+          TransactionLedgerRecord? targetTx;
+          if (corrId != null) {
+            targetTx = transactionLedger.cast<TransactionLedgerRecord?>().firstWhere(
+              (t) => t?.transactionId == corrId,
+              orElse: () => null,
+            );
+          }
+          targetTx ??= activeTransaction;
+          if (targetTx != null) {
+            targetTx.desktopUpdateTime = desktopTime;
+          }
+          pipelineStage = PipelineStage.desktopUpdated;
           _addLog('DESKTOP_UPDATED: State changed to ${data['payload']?['state']}');
           notifyListeners();
           break;
 
-        case 'SCULPTOR_ACTION_EXECUTED':
+        case 'SCULPTOR_ACTION_EXECUTING':
+          final execTime = DateTime.now();
+          final corrId = data['payload']?['correlation_id'] ?? data['correlation_id'];
+          TransactionLedgerRecord? targetTx;
+          if (corrId != null) {
+            targetTx = transactionLedger.cast<TransactionLedgerRecord?>().firstWhere(
+              (t) => t?.transactionId == corrId,
+              orElse: () => null,
+            );
+          }
+          targetTx ??= activeTransaction;
+          if (targetTx != null) {
+            targetTx.sculptorExecutingTime = execTime;
+            targetTx.sculptorAction = data['payload']?['action'];
+          }
           pipelineStage = PipelineStage.sculptorExecuted;
-          _addLog('SCULPTOR_ACK: ${data['payload']?['action'] ?? 'action executed'}');
+          _addLog('SCULPTOR_EXECUTING: ${data['payload']?['action'] ?? 'action executing'}');
           notifyListeners();
-          Future.delayed(const Duration(milliseconds: 300), () {
-            pipelineStage = PipelineStage.ackReceived;
-            _lastAck = DateTime.now();
-            lastEventAckedTime = _lastAck;
-            if (lastEventSentTime != null) {
-              roundTripDurationMs = _lastAck!.difference(lastEventSentTime!).inMilliseconds;
+          break;
+
+        case 'SCULPTOR_ACTION_EXECUTED':
+          final confirmTime = DateTime.now();
+          _lastAck = confirmTime;
+          lastEventAckedTime = confirmTime;
+          final corrId = data['payload']?['correlation_id'] ?? data['correlation_id'];
+          TransactionLedgerRecord? targetTx;
+          if (corrId != null) {
+            targetTx = transactionLedger.cast<TransactionLedgerRecord?>().firstWhere(
+              (t) => t?.transactionId == corrId,
+              orElse: () => null,
+            );
+          }
+          targetTx ??= activeTransaction;
+          if (targetTx != null) {
+            targetTx.executionConfirmationTime = confirmTime;
+            targetTx.isCompleted = true;
+            targetTx.sculptorAction = data['payload']?['action'];
+            targetTx.totalDurationMs = confirmTime.difference(targetTx.startTime).inMilliseconds;
+            _transactionRttMs = targetTx.totalDurationMs;
+            roundTripDurationMs = _transactionRttMs;
+          }
+          _lastEventAcked = 'SCULPTOR_COMPLETED';
+          _eventsAcked++;
+          pipelineStage = PipelineStage.ackReceived;
+          _addLog('SCULPTOR_CONFIRMED: ${data['payload']?['action'] ?? 'action completed'} (${_transactionRttMs ?? 0}ms)');
+          notifyListeners();
+
+          Future.delayed(const Duration(seconds: 4), () {
+            if (pipelineStage == PipelineStage.ackReceived) {
+              pipelineStage = PipelineStage.idle;
+              notifyListeners();
             }
-            _lastEventAcked = 'SCULPTOR_ACK';
-            _eventsAcked++;
-            notifyListeners();
-            Future.delayed(const Duration(seconds: 4), () {
-              if (pipelineStage == PipelineStage.ackReceived) {
-                pipelineStage = PipelineStage.idle;
-                notifyListeners();
-              }
-            });
           });
           break;
 
@@ -335,14 +448,14 @@ class WebSocketService extends ChangeNotifier {
     if (payload == null || _lastPingSent == null) return;
 
     final now = DateTime.now();
-    _latencyMs = now.difference(_lastPingSent!).inMilliseconds;
+    _networkRttMs = now.difference(_lastPingSent!).inMilliseconds;
     lastHeartbeat = now;
     _missedHeartbeats = 0;
 
     // Detect degraded connection
-    if (_latencyMs > 500 && _connectionState == WsConnectionState.connected) {
+    if (_networkRttMs > 500 && _connectionState == WsConnectionState.connected) {
       _setWsConnectionState(WsConnectionState.degraded);
-    } else if (_latencyMs <= 500 && _connectionState == WsConnectionState.degraded) {
+    } else if (_networkRttMs <= 500 && _connectionState == WsConnectionState.degraded) {
       _setWsConnectionState(WsConnectionState.connected);
     }
 
@@ -356,9 +469,25 @@ class WebSocketService extends ChangeNotifier {
     }
     pipelineStage = PipelineStage.transmitting;
     _lastEventSent = 'COGNITIVE_STATE_COMMITTED';
-    lastEventSentTime = DateTime.now();
+    final now = DateTime.now();
+    lastEventSentTime = now;
+    _transactionRttMs = null;
     roundTripDurationMs = null;
-    _addLog('TRIGGER: $state ($reason)');
+
+    final rand = Random().nextInt(8999) + 1000;
+    activeCorrelationId = 'corr-${now.millisecondsSinceEpoch}-$rand';
+
+    activeTransaction = TransactionLedgerRecord(
+      transactionId: activeCorrelationId!,
+      state: activeCognitiveState,
+      confidence: liveConfidence,
+      reason: reason,
+      startTime: now,
+    );
+    transactionLedger.insert(0, activeTransaction!);
+    if (transactionLedger.length > 25) transactionLedger.removeLast();
+
+    _addLog('TRIGGER: $state [corr: ${activeCorrelationId!.substring(0, min(14, activeCorrelationId!.length))}]');
     notifyListeners();
 
     sendEvent('COGNITIVE_STATE_COMMITTED', {
@@ -368,7 +497,21 @@ class WebSocketService extends ChangeNotifier {
       'reason': reason,
       'device_source': persistentDeviceId ?? 'apex-mobile-node',
       'source': 'mobile',
-      'timestamp': lastEventSentTime!.millisecondsSinceEpoch,
+      'correlation_id': activeCorrelationId,
+      'timestamp': now.millisecondsSinceEpoch,
+    });
+
+    // Fallback safety timeout (8s) so UI doesn't get stuck on PROCESSING if connection drops
+    final txId = activeCorrelationId;
+    Future.delayed(const Duration(seconds: 8), () {
+      if (activeCorrelationId == txId &&
+          pipelineStage != PipelineStage.idle &&
+          pipelineStage != PipelineStage.ackReceived) {
+        _addLog('TX_TIMEOUT: Transaction $txId timed out');
+        activeTransaction?.isFailed = true;
+        pipelineStage = PipelineStage.idle;
+        notifyListeners();
+      }
     });
   }
 

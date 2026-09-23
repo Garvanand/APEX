@@ -99,7 +99,7 @@ export default function GlobalInterventionFeed({ activeTab }: { activeTab: strin
                   <Shield className="w-3 h-3 text-accent" />
                   <span className="text-[10px] uppercase font-bold text-white/50 tracking-widest">Environment Sculptor</span>
                 </div>
-                <span className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded font-bold ${
+                <span data-testid="sculptor-status" className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded font-bold ${
                   sculptorAction.status === 'executing' ? 'bg-warning/20 text-warning animate-pulse' :
                   sculptorAction.status === 'completed' ? 'bg-success/20 text-success' :
                   sculptorAction.status === 'proposed' ? 'bg-accent/20 text-accent' :
@@ -180,8 +180,8 @@ export default function GlobalInterventionFeed({ activeTab }: { activeTab: strin
                   {timeline.length === 0 ? (
                     <div className="text-xs font-mono text-white/30 italic py-4">Awaiting cross-device events...</div>
                   ) : (
-                    timeline.slice(0, 15).map((entry) => (
-                      <div key={entry.id} className="relative flex items-start gap-3">
+                    timeline.slice(0, 15).map((entry, idx) => (
+                      <div key={`${entry.id}-${idx}`} className="relative flex items-start gap-3">
                         <div className="relative z-10 w-2.5 h-2.5 rounded-full bg-secondary-surface ring-2 ring-white/20 mt-1 shrink-0" />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-0.5">

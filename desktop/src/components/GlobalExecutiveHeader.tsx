@@ -44,7 +44,7 @@ export default function GlobalExecutiveHeader() {
           }`} />
           <div className="flex flex-col">
             <div className="flex items-center gap-1.5">
-              <span className="text-[11px] font-bold tracking-widest uppercase text-white font-mono">
+              <span data-testid="header-cognitive-state" className="text-[11px] font-bold tracking-widest uppercase text-white font-mono">
                 {cognitiveState}
               </span>
               <span className="text-[10px] font-mono text-accent font-semibold">

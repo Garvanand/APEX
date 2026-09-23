@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'api_service.dart';
 
 class WorkspaceSyncService {
@@ -19,9 +18,7 @@ class WorkspaceSyncService {
   Future<Map<String, dynamic>?> getActiveConstraints() async {
     try {
       final response = await _apiService.get('/agents/environment/status');
-      if (response != null) {
-        return jsonDecode(response.body);
-      }
+      return jsonDecode(response.body);
     } catch (e) {
       print('Failed to get constraints: $e');
     }

@@ -57,6 +57,7 @@ class SensorEngine extends ChangeNotifier {
 
   double sma5s = 0.0;
   double jerkVariance5s = 0.0;
+  double spectralEnergy5s = 0.0;
   double touchDensity5s = 0.0;
   
   final List<double> _magBuffer = [];
@@ -66,13 +67,16 @@ class SensorEngine extends ChangeNotifier {
   int _touchCount5s = 0;
   int _ticks5s = 0;
 
-  Function(double sma, double jerk, double touchDensity, int appSwitches)? onFeatureVectorCalculated;
+  Function(double sma, double jerk, double spectral, double touchDensity, int appSwitches)? onFeatureVectorCalculated;
 
   Timer? _tickTimer;
   final List<StreamSubscription> _subs = [];
 
   bool _isSimulated = false;
   bool get isRealSensor => !_isSimulated;
+  String get sensorModeDescription => _isSimulated
+      ? "SIMULATION MODE: Generated sensor stream for unsupported runtime"
+      : "HARDWARE TRANSDUCER ACTIVE: Physical IMU accelerometer and gyroscope streams";
   final Random _random = Random();
 
   void start() {
@@ -190,15 +194,23 @@ class SensorEngine extends ChangeNotifier {
       double jerkMean = jerks.isEmpty ? 0 : jerks.reduce((a, b) => a + b) / jerks.length;
       double jerkVarSum = 0;
       for (var j in jerks) {
-         jerkVarSum += pow(j - jerkMean, 2);
+        jerkVarSum += pow(j - jerkMean, 2);
       }
       jerkVariance5s = jerks.isEmpty ? 0 : jerkVarSum / jerks.length;
-      
+
+      // Calculate Spectral Energy (AC component power via Parseval's identity)
+      double magMean = _magBuffer.isEmpty ? 0 : _magBuffer.reduce((a, b) => a + b) / _magBuffer.length;
+      double spectralSum = 0.0;
+      for (var m in _magBuffer) {
+        spectralSum += pow(m - magMean, 2);
+      }
+      spectralEnergy5s = _magBuffer.isEmpty ? 0.0 : (spectralSum / _magBuffer.length);
+
       // Calculate Touch Density
       touchDensity5s = _touchCount5s / 5.0;
       
       if (onFeatureVectorCalculated != null) {
-        onFeatureVectorCalculated!(sma5s, jerkVariance5s, touchDensity5s, backgroundTransitions);
+        onFeatureVectorCalculated!(sma5s, jerkVariance5s, spectralEnergy5s, touchDensity5s, backgroundTransitions);
       }
       
       // Reset buffers

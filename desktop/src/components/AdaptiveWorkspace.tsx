@@ -196,31 +196,33 @@ export default function AdaptiveWorkspace() {
         {/* Distraction Intervention Banner */}
         <AnimatePresence mode="wait">
           {cognitiveState === "Distracted" && (
-            <motion.div
-              layoutId="distraction-banner"
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              className="rounded-xl p-5 mb-6 flex flex-col md:flex-row items-center justify-between gap-4 border shrink-0 bg-warning/10 border-warning/30 backdrop-blur-md"
-            >
-              <div className="flex items-center gap-4">
-                <span className="w-3 h-3 rounded-full animate-pulse bg-warning shrink-0" />
-                <div className="text-sm font-medium text-white">
-                  <span className="font-semibold text-warning">
-                    DISTRACTION MITIGATION ACTIVE:
-                  </span>{" "}
-                  Rapid context switching or erratic activity detected. Environment Sculptor has attenuated background elements and silenced non-critical notifications.
-                </div>
-              </div>
-              <button
-                onClick={() => {
-                  triggerCognitiveState("Flow", "Dismissed distraction intervention");
-                }}
-                className="px-4 py-2 bg-warning hover:bg-warning/80 text-black text-xs font-bold rounded-lg transition-colors cursor-pointer shrink-0"
+              <motion.div
+                data-testid="distraction-mitigation-banner"
+                layoutId="distraction-banner"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="rounded-xl p-5 mb-6 flex flex-col md:flex-row items-center justify-between gap-4 border shrink-0 bg-warning/10 border-warning/30 backdrop-blur-md"
               >
-                Dismiss Intervention
-              </button>
-            </motion.div>
+                <div className="flex items-center gap-4">
+                  <span className="w-3 h-3 rounded-full animate-pulse bg-warning shrink-0" />
+                  <div className="text-sm font-medium text-white">
+                    <span className="font-semibold text-warning">
+                      DISTRACTION MITIGATION ACTIVE:
+                    </span>{" "}
+                    Rapid context switching or erratic activity detected. Environment Sculptor has attenuated background elements and silenced non-critical notifications.
+                  </div>
+                </div>
+                <button
+                  data-testid="dismiss-mitigation-btn"
+                  onClick={() => {
+                    triggerCognitiveState("Flow", "Dismissed distraction intervention");
+                  }}
+                  className="px-4 py-2 bg-warning hover:bg-warning/80 text-black text-xs font-bold rounded-lg transition-colors cursor-pointer shrink-0"
+                >
+                  Dismiss Intervention
+                </button>
+              </motion.div>
           )}
         </AnimatePresence>
 

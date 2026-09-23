@@ -101,10 +101,11 @@ class _AgentHubScreenState extends State<AgentHubScreen> with WidgetsBindingObse
       _ws.triggerCognitiveState(newState, reason: reason, confidence: confidence / 100.0);
     };
 
-    _sensorEngine.onFeatureVectorCalculated = (sma, jerk, touchDensity, appSwitches) {
+    _sensorEngine.onFeatureVectorCalculated = (sma, jerk, spectral, touchDensity, appSwitches) {
       _ws.sendEvent("SENSOR_FEATURE_VECTOR", {
         "sma": sma,
         "jerk_variance": jerk,
+        "spectral_energy": spectral,
         "touch_density": touchDensity,
         "app_switches": appSwitches,
         "timestamp": DateTime.now().toIso8601String(),
@@ -383,9 +384,8 @@ class _AgentHubScreenState extends State<AgentHubScreen> with WidgetsBindingObse
   Widget _buildSessionRegistryCard() {
     final persistentId = _ws.persistentDeviceId ?? _ws.deviceId ?? "apex-mobile-node";
     final sessId = _ws.sessionId ?? (_ws.isConnected ? "ESTABLISHED" : "OFFLINE");
-    final rttText = _ws.roundTripDurationMs != null
-        ? "${_ws.roundTripDurationMs} ms (full-loop)"
-        : "${_ws.latencyMs} ms (ping)";
+    final netRtt = "${_ws.networkRttMs} ms";
+    final txRtt = _ws.transactionRttMs != null ? "${_ws.transactionRttMs} ms" : "READY";
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -400,23 +400,30 @@ class _AgentHubScreenState extends State<AgentHubScreen> with WidgetsBindingObse
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.hub_outlined, size: 14, color: Color(0xFF3B82F6)),
-                  SizedBox(width: 8),
-                  Text(
-                    "SESSION & IDENTITY REGISTRY",
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: _ws.isConnected ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    "APEX LIVE LINK",
                     style: TextStyle(
-                      color: Color(0xFF9CA3AF),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
                       letterSpacing: 1.5,
                     ),
                   ),
                 ],
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: _ws.isConnected
                       ? const Color(0xFF10B981).withValues(alpha: 0.1)
@@ -429,7 +436,7 @@ class _AgentHubScreenState extends State<AgentHubScreen> with WidgetsBindingObse
                   ),
                 ),
                 child: Text(
-                  _ws.isConnected ? "ACTIVE LINK" : "DISCONNECTED",
+                  _ws.isConnected ? "CONNECTED" : "OFFLINE",
                   style: TextStyle(
                     color: _ws.isConnected ? const Color(0xFF10B981) : const Color(0xFFEF4444),
                     fontSize: 10,
@@ -443,7 +450,7 @@ class _AgentHubScreenState extends State<AgentHubScreen> with WidgetsBindingObse
           Row(
             children: [
               Expanded(
-                child: _buildMetaItem("PERSISTENT DEVICE ID", persistentId),
+                child: _buildMetaItem("PERSISTENT DEVICE", persistentId),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -455,26 +462,114 @@ class _AgentHubScreenState extends State<AgentHubScreen> with WidgetsBindingObse
           Row(
             children: [
               Expanded(
-                child: _buildMetaItem("ROUND-TRIP LATENCY", rttText),
+                child: _buildMetaItem("NETWORK RTT (PING)", netRtt),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: _buildMetaItem("LAST HEARTBEAT", _formatTime(_ws.lastHeartbeat)),
+                child: _buildMetaItem("TRANSACTION RTT (FULL-LOOP)", txRtt),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _buildMetaItem("LAST EVENT SENT", _ws.lastEventSent ?? "NONE"),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildMetaItem("LAST ACK RECEIVED", _ws.lastEventAcked ?? "NONE"),
-              ),
-            ],
+          const SizedBox(height: 12),
+          // Bidirectional Uplink / Downlink Indicators
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF090A0F),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: const Color(0xFF1F2937)),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.arrow_upward,
+                          size: 13,
+                          color: _ws.isUplinkConnected ? const Color(0xFF10B981) : const Color(0xFF6B7280),
+                        ),
+                        const SizedBox(width: 6),
+                        const Text(
+                          "UPLINK (PHONE → DESKTOP)",
+                          style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      _ws.isUplinkConnected ? "CONNECTED" : "OFFLINE",
+                      style: TextStyle(
+                        color: _ws.isUplinkConnected ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.arrow_downward,
+                          size: 13,
+                          color: _ws.isDownlinkConnected ? const Color(0xFF3B82F6) : const Color(0xFF6B7280),
+                        ),
+                        const SizedBox(width: 6),
+                        const Text(
+                          "DOWNLINK (DESKTOP → PHONE)",
+                          style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      _ws.isDownlinkConnected ? "CONNECTED" : "AWAITING DESKTOP",
+                      style: TextStyle(
+                        color: _ws.isDownlinkConnected ? const Color(0xFF3B82F6) : const Color(0xFFF59E0B),
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
+          if (_ws.hasRecentDesktopEvent) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.4)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.sync_alt, size: 14, color: Color(0xFF8B5CF6)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      "DESKTOP EVENT RECEIVED: ${_ws.lastDesktopEventState}",
+                      style: const TextStyle(
+                        color: Color(0xFF8B5CF6),
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                  const Text("BIDIRECTIONAL", style: TextStyle(color: Colors.white54, fontSize: 8, fontFamily: 'monospace')),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -688,6 +783,8 @@ class _AgentHubScreenState extends State<AgentHubScreen> with WidgetsBindingObse
   // 3. Controlled Demo Controls (Routes via production WebSocket)
   Widget _buildControlledDemoControls() {
     final activeState = _ws.activeCognitiveState;
+    final isBusy = _ws.pipelineStage != PipelineStage.idle;
+    final activeTx = _ws.activeTransaction;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -703,7 +800,7 @@ class _AgentHubScreenState extends State<AgentHubScreen> with WidgetsBindingObse
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                "CONTROLLED SYSTEM TRIGGERS",
+                "OPERATOR TRANSACTION CONTROLS",
                 style: TextStyle(
                   color: Color(0xFF9CA3AF),
                   fontSize: 10,
@@ -714,13 +811,13 @@ class _AgentHubScreenState extends State<AgentHubScreen> with WidgetsBindingObse
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
+                  color: isBusy ? const Color(0xFFF59E0B).withValues(alpha: 0.1) : const Color(0xFF10B981).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: const Text(
-                  "PRODUCTION PIPELINE",
+                child: Text(
+                  isBusy ? "DISPATCHING TRANSACTION" : "READY FOR LIVE TRANSACTION",
                   style: TextStyle(
-                    color: Color(0xFF3B82F6),
+                    color: isBusy ? const Color(0xFFF59E0B) : const Color(0xFF10B981),
                     fontSize: 9,
                     fontWeight: FontWeight.bold,
                   ),
@@ -728,33 +825,64 @@ class _AgentHubScreenState extends State<AgentHubScreen> with WidgetsBindingObse
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          const Text(
-            "Triggers broadcast a real COGNITIVE_STATE_COMMITTED envelope to the relay and desktop. Double-tap debounced.",
-            style: TextStyle(
-              color: Color(0xFF6B7280),
-              fontSize: 11,
-              height: 1.4,
+          const SizedBox(height: 10),
+          // Active Transaction Context Panel
+          if (isBusy && activeTx != null) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF090A0F),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.4)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "TRANSACTION #${_ws.transactionLedger.length}",
+                        style: const TextStyle(color: Color(0xFFF59E0B), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.0),
+                      ),
+                      Text(
+                        "State: ${activeTx.state} (${(activeTx.confidence * 100).round()}%)",
+                        style: const TextStyle(color: Colors.white, fontSize: 10, fontFamily: 'monospace', fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    "Correlation: ${activeTx.transactionId}",
+                    style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 9, fontFamily: 'monospace'),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    "Reason: ${activeTx.reason}",
+                    style: const TextStyle(color: Color(0xFF6B7280), fontSize: 9),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 14),
+            const SizedBox(height: 12),
+          ],
           Row(
             children: [
-              Expanded(
-                child: _buildTriggerButton(
-                  "TRIGGER FLOW",
-                  const Color(0xFF10B981),
-                  activeState == "FLOW",
-                  () => _handleTrigger("FLOW", "Manual Demo: High Focus Engaged"),
-                ),
-              ),
-              const SizedBox(width: 8),
               Expanded(
                 child: _buildTriggerButton(
                   "TRIGGER DISTRACTION",
                   const Color(0xFFEF4444),
                   activeState == "DISTRACTED",
-                  () => _handleTrigger("DISTRACTED", "Manual Demo: Context Switching Detected"),
+                  () => _handleTrigger("DISTRACTED", "Rapid context switching detected"),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildTriggerButton(
+                  "TRIGGER FATIGUE",
+                  const Color(0xFFF59E0B),
+                  activeState == "FATIGUED",
+                  () => _handleTrigger("FATIGUED", "Extended session strain detected"),
                 ),
               ),
             ],
@@ -764,31 +892,31 @@ class _AgentHubScreenState extends State<AgentHubScreen> with WidgetsBindingObse
             children: [
               Expanded(
                 child: _buildTriggerButton(
-                  "TRIGGER FATIGUE",
-                  const Color(0xFFF59E0B),
-                  activeState == "FATIGUED",
-                  () => _handleTrigger("FATIGUED", "Manual Demo: Extended Session Strain"),
+                  "TRIGGER OVERLOAD",
+                  const Color(0xFFEC4899),
+                  activeState == "OVERLOADED",
+                  () => _handleTrigger("OVERLOADED", "Severe cognitive overload threshold"),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: _buildTriggerButton(
-                  "TRIGGER OVERLOAD",
-                  const Color(0xFFEC4899),
-                  activeState == "OVERLOADED",
-                  () => _handleTrigger("OVERLOADED", "Manual Demo: Extreme Cognitive Load"),
+                  "TRIGGER FLOW",
+                  const Color(0xFF10B981),
+                  activeState == "FLOW",
+                  () => _handleTrigger("FLOW", "Equilibrium and deep focus maintained"),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: () => _handleTrigger("FLOW", "System Reset & Baseline Calibration"),
+              onPressed: isBusy ? null : () => _handleTrigger("FLOW", "Operator reset & baseline calibration"),
               icon: const Icon(Icons.restart_alt, size: 16, color: Color(0xFF9CA3AF)),
               label: const Text(
-                "SYSTEM RESET / CALIBRATE BASELINE",
+                "CALIBRATE / RESET BASELINE",
                 style: TextStyle(
                   color: Color(0xFF9CA3AF),
                   fontSize: 10,
@@ -803,15 +931,15 @@ class _AgentHubScreenState extends State<AgentHubScreen> with WidgetsBindingObse
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           SizedBox(
             width: double.infinity,
             child: TextButton.icon(
               onPressed: () => _showTransactionLedgerModal(context),
               icon: const Icon(Icons.receipt_long, size: 14, color: Color(0xFF3B82F6)),
-              label: const Text(
-                "INSPECT REAL-TIME TRANSACTION LEDGER",
-                style: TextStyle(
+              label: Text(
+                "INSPECT TRANSACTION LEDGER (${_ws.transactionLedger.length})",
+                style: const TextStyle(
                   color: Color(0xFF3B82F6),
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
@@ -826,8 +954,9 @@ class _AgentHubScreenState extends State<AgentHubScreen> with WidgetsBindingObse
   }
 
   Widget _buildTriggerButton(String label, Color color, bool isCurrent, VoidCallback onTap) {
+    final isBusy = _ws.pipelineStage != PipelineStage.idle;
     return ElevatedButton(
-      onPressed: _isTriggering ? null : onTap,
+      onPressed: (_isTriggering || isBusy) ? null : onTap,
       style: ElevatedButton.styleFrom(
         backgroundColor: isCurrent ? color.withValues(alpha: 0.25) : const Color(0xFF1E2638),
         side: BorderSide(color: isCurrent ? color : const Color(0xFF374151), width: isCurrent ? 2 : 1),
@@ -838,10 +967,10 @@ class _AgentHubScreenState extends State<AgentHubScreen> with WidgetsBindingObse
         label,
         textAlign: TextAlign.center,
         style: TextStyle(
-          color: isCurrent ? Colors.white : color,
-          fontSize: 10,
+          color: (_isTriggering || isBusy) ? Colors.white38 : (isCurrent ? Colors.white : color),
+          fontSize: 9,
           fontWeight: FontWeight.bold,
-          letterSpacing: 0.8,
+          letterSpacing: 0.5,
         ),
       ),
     );
@@ -850,56 +979,148 @@ class _AgentHubScreenState extends State<AgentHubScreen> with WidgetsBindingObse
   void _showTransactionLedgerModal(BuildContext context) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: const Color(0xFF0F1420),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
         side: BorderSide(color: Color(0xFF1F2937)),
       ),
       builder: (ctx) {
-        final rtt = _ws.roundTripDurationMs ?? _ws.latencyMs;
-        return Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        final ledger = _ws.transactionLedger;
+        return DraggableScrollableSheet(
+          initialChildSize: 0.65,
+          maxChildSize: 0.9,
+          minChildSize: 0.4,
+          expand: false,
+          builder: (_, scrollCtrl) {
+            return Padding(
+              padding: const EdgeInsets.all(20),
+              child: ListView(
+                controller: scrollCtrl,
                 children: [
-                  const Text(
-                    "TRANSACTION PIPELINE LEDGER",
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.2),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "CORRELATED TRANSACTION LEDGER",
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.2),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF3B82F6).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          "${ledger.length} TRANSACTIONS",
+                          style: const TextStyle(color: Color(0xFF3B82F6), fontSize: 10, fontFamily: 'monospace', fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF10B981).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(4),
+                  const SizedBox(height: 16),
+                  if (ledger.isEmpty) ...[
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 30),
+                      child: Center(
+                        child: Text(
+                          "No transactions logged yet.\nTap a trigger button on the LIVE LINK tab.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+                        ),
+                      ),
                     ),
-                    child: Text(
-                      "$rtt ms RTT",
-                      style: const TextStyle(color: Color(0xFF10B981), fontSize: 11, fontFamily: 'monospace', fontWeight: FontWeight.bold),
+                  ] else ...[
+                    ...ledger.map((tx) {
+                      final isCurrent = tx.transactionId == _ws.activeCorrelationId;
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 14),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF111827),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isCurrent ? const Color(0xFF3B82F6) : const Color(0xFF1F2937),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  "TX: ${tx.transactionId}",
+                                  style: const TextStyle(color: Colors.white, fontSize: 11, fontFamily: 'monospace', fontWeight: FontWeight.bold),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: tx.isCompleted
+                                        ? const Color(0xFF10B981).withValues(alpha: 0.1)
+                                        : (tx.isFailed ? const Color(0xFFEF4444).withValues(alpha: 0.1) : const Color(0xFFF59E0B).withValues(alpha: 0.1)),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    tx.isCompleted ? "COMPLETED" : (tx.isFailed ? "FAILED" : "IN FLIGHT"),
+                                    style: TextStyle(
+                                      color: tx.isCompleted ? const Color(0xFF10B981) : (tx.isFailed ? const Color(0xFFEF4444) : const Color(0xFFF59E0B)),
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              "State: ${tx.state} (${(tx.confidence * 100).round()}%) • ${tx.reason}",
+                              style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 10),
+                            ),
+                            const SizedBox(height: 10),
+                            _buildLedgerStep("1", "T+000 ms PHONE", "COGNITIVE_STATE_COMMITTED emitted", true),
+                            _buildLedgerStep(
+                              "2",
+                              tx.relayOffsetMs != null ? "T+${tx.relayOffsetMs} ms RELAY" : "T+... ms RELAY",
+                              "STATE_TRANSITION_ACK confirmed by relay",
+                              tx.relayAckTime != null,
+                            ),
+                            _buildLedgerStep(
+                              "3",
+                              tx.desktopOffsetMs != null ? "T+${tx.desktopOffsetMs} ms DESKTOP" : "T+... ms DESKTOP",
+                              "DESKTOP_STATE_CHANGED received from laptop",
+                              tx.desktopUpdateTime != null,
+                            ),
+                            _buildLedgerStep(
+                              "4",
+                              tx.sculptorExecutingOffsetMs != null ? "T+${tx.sculptorExecutingOffsetMs} ms SCULPTOR" : "T+... ms SCULPTOR",
+                              "SCULPTOR_ACTION_EXECUTING: ${tx.sculptorAction ?? 'focus intervention'}",
+                              tx.sculptorExecutingTime != null,
+                            ),
+                            _buildLedgerStep(
+                              "5",
+                              tx.executionConfirmationOffsetMs != null ? "T+${tx.executionConfirmationOffsetMs} ms MOBILE" : "T+... ms MOBILE",
+                              "SCULPTOR_ACTION_EXECUTED confirmed • Total RTT: ${tx.totalDurationMs ?? '...'} ms",
+                              tx.executionConfirmationTime != null,
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E2638)),
+                      child: const Text("DISMISS LEDGER", style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              _buildLedgerStep("1", "PHONE SENSOR / CONTROLLER", "Envelope emitted: COGNITIVE_STATE_COMMITTED (conf: ${(_ws.liveConfidence * 100).round()}%)", true),
-              _buildLedgerStep("2", "RELAY PROTOCOL VALIDATION", "Session authenticated, forwarded via /ws endpoint (:8080)", true),
-              _buildLedgerStep("3", "DESKTOP APP CONTEXT", "State normalized & committed into desktop state manager", true),
-              _buildLedgerStep("4", "ENVIRONMENT SCULPTOR", "Adaptive workspace adjustments executed on desktop UI", true),
-              _buildLedgerStep("5", "ROUND-TRIP CONFIRMATION", "SCULPTOR_ACTION_EXECUTED ACK received back on mobile", true),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E2638)),
-                  child: const Text("CLOSE LEDGER", style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                ),
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -1702,6 +1923,56 @@ class _AgentHubScreenState extends State<AgentHubScreen> with WidgetsBindingObse
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _buildMetricTile(
+                  "SPECTRAL ENERGY [AC POWER]",
+                  _sensorEngine.spectralEnergy5s.toStringAsFixed(3),
+                  const Color(0xFF8B5CF6),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildMetricTile(
+                  "APP SWITCHES [5S]",
+                  "${_sensorEngine.backgroundTransitions}",
+                  Colors.white70,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF090A0F),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: const Color(0xFF1F2937)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "5-DIMENSIONAL FEATURE VECTOR (ONNX TENSOR)",
+                  style: TextStyle(color: Color(0xFF6B7280), fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  "[ ${_sensorEngine.sma5s.toStringAsFixed(2)}, ${_sensorEngine.jerkVariance5s.toStringAsFixed(2)}, ${_sensorEngine.spectralEnergy5s.toStringAsFixed(3)}, ${_sensorEngine.touchDensity5s.toStringAsFixed(2)}, ${_sensorEngine.backgroundTransitions}.0 ]",
+                  style: const TextStyle(color: Color(0xFF10B981), fontSize: 11, fontFamily: 'monospace', fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _sensorEngine.isRealSensor
+                      ? "PROVENANCE: [SMA: Measured, Jerk: Measured, Spectral: Parseval AC Power, Touch: Measured, Switches: Measured]"
+                      : "PROVENANCE: [SIMULATION MODE: Synthetic mathematical telemetry for unsupported runtime environment]",
+                  style: const TextStyle(color: Color(0xFF6B7280), fontSize: 8, fontFamily: 'monospace'),
+                ),
+              ],
+            ),
           ),
         ],
       ),

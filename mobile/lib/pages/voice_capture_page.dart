@@ -15,7 +15,6 @@ class _VoiceCapturePageState extends State<VoiceCapturePage> with TickerProvider
   int _secondsRecorded = 0;
   bool _isRecording = false;
 
-  final List<double> _waveValues = List.generate(30, (_) => 0.1);
   final List<String> _fullTranscript = [
     "The", "compiler", "parses", "grammar", "structures",
     "into", "an", "AST", "or", "abstract", "syntax", "tree",
