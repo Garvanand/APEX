@@ -17,7 +17,7 @@ import WorkspaceStoryEngine from "./WorkspaceStoryEngine";
 import DesktopAgentMonitor from "./DesktopAgentMonitor";
 
 export default function AdaptiveWorkspace() {
-  const { cognitiveState, confidence, logs, addLog, telemetry, interpreted, adaptiveMode, setAdaptiveMode, triggerOptimization, isApexEnabled, setIsApexEnabled } = useAppContext();
+  const { cognitiveState, confidence, logs, addLog, telemetry, interpreted, adaptiveMode, setAdaptiveMode, triggerOptimization, isApexEnabled, setIsApexEnabled, triggerCognitiveState } = useAppContext();
   const { override } = useDemoState();
   
   // Right panel states
@@ -132,7 +132,11 @@ export default function AdaptiveWorkspace() {
       {/* ── Left Side: Main Execution Canvas ── */}
       <motion.div 
         layout
-        className={`relative flex-1 flex flex-col min-w-0 transition-all duration-700 ${adaptiveMode === "recovery" ? "filter grayscale opacity-90" : ""}`}
+        className={`relative flex-1 flex flex-col min-w-0 transition-all duration-700 ${
+          cognitiveState === "Distracted" ? "filter brightness-90 saturate-[0.75]" :
+          cognitiveState === "Overloaded" ? "filter grayscale contrast-125" :
+          cognitiveState === "Fatigued" ? "filter sepia-[0.25] brightness-90" : ""
+        }`}
       >
         {/* APEX DISABLED CHAOS OVERLAY */}
         <AnimatePresence>
@@ -185,6 +189,37 @@ export default function AdaptiveWorkspace() {
                   </button>
                 </div>
               </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Distraction Intervention Banner */}
+        <AnimatePresence mode="wait">
+          {cognitiveState === "Distracted" && (
+            <motion.div
+              layoutId="distraction-banner"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="rounded-xl p-5 mb-6 flex flex-col md:flex-row items-center justify-between gap-4 border shrink-0 bg-warning/10 border-warning/30 backdrop-blur-md"
+            >
+              <div className="flex items-center gap-4">
+                <span className="w-3 h-3 rounded-full animate-pulse bg-warning shrink-0" />
+                <div className="text-sm font-medium text-white">
+                  <span className="font-semibold text-warning">
+                    DISTRACTION MITIGATION ACTIVE:
+                  </span>{" "}
+                  Rapid context switching or erratic activity detected. Environment Sculptor has attenuated background elements and silenced non-critical notifications.
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  triggerCognitiveState("Flow", "Dismissed distraction intervention");
+                }}
+                className="px-4 py-2 bg-warning hover:bg-warning/80 text-black text-xs font-bold rounded-lg transition-colors cursor-pointer shrink-0"
+              >
+                Dismiss Intervention
+              </button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -333,13 +368,9 @@ export default function AdaptiveWorkspace() {
                   </button>
                   <button 
                     onClick={() => {
-                      fetchWithRetry("http://localhost:8000/api/v1/cognitive/simulate", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ state: "DISTRACTED" })
-                      }).catch(console.error);
+                      triggerCognitiveState("Distracted", "Simulated distraction trigger from workspace");
                     }}
-                    className="px-2 py-1 rounded bg-warning/10 hover:bg-warning/20 text-warning text-[10px] font-bold uppercase transition-colors border border-warning/20"
+                    className="px-2 py-1 rounded bg-warning/10 hover:bg-warning/20 text-warning text-[10px] font-bold uppercase transition-colors border border-warning/20 cursor-pointer"
                     title="Simulate FLOW -> DISTRACTED State Transition"
                   >
                     Simulate Distraction

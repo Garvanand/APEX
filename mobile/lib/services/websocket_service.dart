@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../core/app_config.dart';
 import '../models/cognitive_state.dart';
@@ -27,7 +29,9 @@ enum PipelineStage {
 class WebSocketService extends ChangeNotifier {
   static final WebSocketService _instance = WebSocketService._internal();
   factory WebSocketService() => _instance;
-  WebSocketService._internal();
+  WebSocketService._internal() {
+    initPersistentDeviceId();
+  }
 
   WebSocketChannel? _channel;
   StreamSubscription? _subscription;
@@ -41,21 +45,23 @@ class WebSocketService extends ChangeNotifier {
   PipelineStage pipelineStage = PipelineStage.idle;
   String activeCognitiveState = "FLOW";
   String get cognitiveState => activeCognitiveState;
-  double get confidenceScore => 0.94;
+  double liveConfidence = 0.96;
+  double get confidenceScore => liveConfidence;
   CognitiveStateData? get currentState => CognitiveStateData(
     state: activeCognitiveState,
-    confidenceScore: 0.94,
+    confidenceScore: liveConfidence,
     updatedAt: DateTime.now(),
     contributingMetrics: ['motion', 'cadence', 'ambient'],
   );
   DateTime? lastHeartbeat;
 
-  // ── Session Info (set by relay HANDSHAKE_ACK) ────────
+  // ── Identity & Session Info ──────────────────────────
+  String? persistentDeviceId;
   String? sessionId;
   String? deviceId;
   List<Map<String, dynamic>> connectedDevices = [];
 
-  // ── Real Latency Measurement ─────────────────────────
+  // ── Real Latency & Timestamps ─────────────────────────
   int _latencyMs = 0;
   int get latencyMs => _latencyMs;
   DateTime? _lastPingSent;
@@ -67,8 +73,35 @@ class WebSocketService extends ChangeNotifier {
   String? get lastEventSent => _lastEventSent;
   String? _lastEventAcked;
   String? get lastEventAcked => _lastEventAcked;
+  DateTime? lastEventSentTime;
+  DateTime? lastEventAckedTime;
+  int? roundTripDurationMs;
   int _eventsAcked = 0;
   int get eventsAcked => _eventsAcked;
+
+  Future<String> initPersistentDeviceId() async {
+    if (persistentDeviceId != null && persistentDeviceId!.isNotEmpty) {
+      return persistentDeviceId!;
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      String? storedId = prefs.getString('apex_persistent_device_id');
+      if (storedId == null || storedId.isEmpty) {
+        final rand = Random().nextInt(8999) + 1000;
+        final timeTag = DateTime.now().millisecondsSinceEpoch.toRadixString(36);
+        storedId = 'apex-mobile-$timeTag-$rand';
+        await prefs.setString('apex_persistent_device_id', storedId);
+      }
+      persistentDeviceId = storedId;
+      deviceId = storedId;
+      notifyListeners();
+      return storedId;
+    } catch (_) {
+      persistentDeviceId ??= 'apex-mobile-dev-${Random().nextInt(9999)}';
+      deviceId = persistentDeviceId;
+      return persistentDeviceId!;
+    }
+  }
 
   // ── Heartbeat ────────────────────────────────────────
   Timer? _heartbeatTimer;
@@ -139,10 +172,11 @@ class WebSocketService extends ChangeNotifier {
         },
       );
 
-      // Send HANDSHAKE immediately
+      // Send HANDSHAKE immediately with persistent device ID
       _sendRaw({
         'event': 'HANDSHAKE',
         'payload': {
+          'device_id': persistentDeviceId ?? 'apex-mobile-node',
           'device_type': 'mobile',
           'device_name': 'APEX Mobile Companion',
           'platform': kIsWeb ? 'flutter_web' : 'flutter_native',
@@ -183,6 +217,10 @@ class WebSocketService extends ChangeNotifier {
 
         case 'STATE_TRANSITION_ACK':
           _lastAck = DateTime.now();
+          lastEventAckedTime = _lastAck;
+          if (lastEventSentTime != null && roundTripDurationMs == null) {
+            roundTripDurationMs = _lastAck!.difference(lastEventSentTime!).inMilliseconds;
+          }
           _lastEventAcked = 'RELAY_RECEIVED';
           _eventsAcked++;
           pipelineStage = PipelineStage.relayReceived;
@@ -203,9 +241,13 @@ class WebSocketService extends ChangeNotifier {
           pipelineStage = PipelineStage.sculptorExecuted;
           _addLog('SCULPTOR_ACK: ${data['payload']?['action'] ?? 'action executed'}');
           notifyListeners();
-          Future.delayed(const Duration(milliseconds: 600), () {
+          Future.delayed(const Duration(milliseconds: 300), () {
             pipelineStage = PipelineStage.ackReceived;
             _lastAck = DateTime.now();
+            lastEventAckedTime = _lastAck;
+            if (lastEventSentTime != null) {
+              roundTripDurationMs = _lastAck!.difference(lastEventSentTime!).inMilliseconds;
+            }
             _lastEventAcked = 'SCULPTOR_ACK';
             _eventsAcked++;
             notifyListeners();
@@ -307,20 +349,26 @@ class WebSocketService extends ChangeNotifier {
     notifyListeners();
   }
 
-  void triggerCognitiveState(String state, {String reason = 'manual_trigger'}) {
+  void triggerCognitiveState(String state, {String reason = 'manual_trigger', double? confidence}) {
     activeCognitiveState = state.toUpperCase();
+    if (confidence != null) {
+      liveConfidence = confidence;
+    }
     pipelineStage = PipelineStage.transmitting;
     _lastEventSent = 'COGNITIVE_STATE_COMMITTED';
+    lastEventSentTime = DateTime.now();
+    roundTripDurationMs = null;
     _addLog('TRIGGER: $state ($reason)');
     notifyListeners();
 
     sendEvent('COGNITIVE_STATE_COMMITTED', {
       'state': state,
-      'confidence': 95,
+      'confidence': (liveConfidence * 100).round(),
+      'confidence_raw': liveConfidence,
       'reason': reason,
-      'device_source': 'iqoo-mobile-client',
+      'device_source': persistentDeviceId ?? 'apex-mobile-node',
       'source': 'mobile',
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'timestamp': lastEventSentTime!.millisecondsSinceEpoch,
     });
   }
 

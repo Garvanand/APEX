@@ -73,6 +73,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   const pingTimestampRef = useRef<number>(0);
   const intentionalCloseRef = useRef(false);
   const handshakeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handshakeCompletedRef = useRef(false);
 
   const updateStatus = useCallback(
     (status: ConnectionStatus) => {
@@ -119,6 +120,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 
       switch (eventType) {
         case 'HANDSHAKE_ACK': {
+          handshakeCompletedRef.current = true;
           const payload = data.payload;
           setSessionId(payload.session_id);
           setDeviceId(payload.device_id);
@@ -191,6 +193,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       wsRef.current = null;
     }
 
+    handshakeCompletedRef.current = false;
     updateStatus('connecting');
 
     try {
@@ -202,6 +205,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
         ws.send(JSON.stringify({
           event: 'HANDSHAKE',
           payload: {
+            device_id: 'apex-desktop-tauri-node',
             device_type: 'desktop',
             device_name: 'APEX Desktop Console',
             platform: 'tauri_react',
@@ -209,11 +213,11 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
           }
         }));
 
-        // Set handshake timeout
+        // Set socket-scoped handshake timeout
         handshakeTimeoutRef.current = setTimeout(() => {
-          if (connectionStatus === 'connecting') {
-            console.warn('[WS] Handshake timeout — no HANDSHAKE_ACK received');
-            ws.close();
+          if (!handshakeCompletedRef.current && wsRef.current === ws && ws.readyState === WebSocket.OPEN) {
+            console.warn('[WS] Handshake timeout — no HANDSHAKE_ACK received for current socket');
+            ws.close(1008, 'Handshake timeout');
           }
         }, 5000);
       };
@@ -251,7 +255,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       console.error('[WS] Failed to create WebSocket:', err);
       updateStatus('offline');
     }
-  }, [url, maxRetries, baseDelay, updateStatus, handleMessage, clearTimers, connectionStatus]);
+  }, [url, maxRetries, baseDelay, updateStatus, handleMessage, clearTimers]);
 
   // ── Public API ─────────────────────────────────────────
   const connect = useCallback(() => {

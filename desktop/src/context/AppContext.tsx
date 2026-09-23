@@ -122,6 +122,10 @@ interface AppContextValue {
   // Real Sensor Data from Phone
   mobileTelemetry: MobileTelemetry | null;
 
+  // Messaging & Control
+  sendMessage: <T>(event: string, payload: T) => void;
+  triggerCognitiveState: (state: CognitiveState, reason?: string) => void;
+
   // Demo
   lastDemoSync: any;
   runDemoSequence: () => void;
@@ -241,23 +245,23 @@ export function AppProvider({ children }: AppProviderProps) {
     setSculptorAction({ status: 'proposed', action, trigger, timestamp: Date.now() });
     addTimeline('SCULPTOR_PROPOSED', action, 'desktop');
 
-    // EXECUTING (after 500ms)
+    // EXECUTING (after 150ms)
     setTimeout(() => {
       setSculptorAction(prev => ({ ...prev, status: 'executing' }));
       addTimeline('SCULPTOR_EXECUTING', action, 'desktop');
-    }, 500);
+    }, 150);
 
-    // COMPLETED (after 2s) + send ACK to relay
+    // COMPLETED (after 550ms) + send ACK to relay
     setTimeout(() => {
       setSculptorAction(prev => ({ ...prev, status: 'completed' }));
       addTimeline('SCULPTOR_COMPLETED', action, 'desktop');
       sendMessage('SCULPTOR_ACTION_EXECUTED', { action, state, timestamp: Date.now() });
-    }, 2000);
+    }, 550);
 
-    // Back to idle after 5s
+    // Back to idle after 3.5s
     setTimeout(() => {
       setSculptorAction(prev => prev.status === 'completed' ? { ...prev, status: 'idle' } : prev);
-    }, 5000);
+    }, 3500);
   }, [triggerOptimization, addTimeline]);
 
   // ── Logging ─────────────────────────────────────────────
@@ -310,6 +314,48 @@ export function AppProvider({ children }: AppProviderProps) {
       }
     },
   });
+
+  // ── Trigger Cognitive State from Desktop ─────────────────
+  const triggerCognitiveState = useCallback((targetState: CognitiveState, reason: string = 'Manual desktop trigger') => {
+    const prevState = cognitiveState;
+    setCognitiveState(targetState);
+    setConfidence(0.95);
+    setStateSource('desktop_manual');
+    setStateUpdatedAt(Date.now());
+    setIsApexEnabled(true);
+
+    addTimeline('STATE_TRANSITION', `${prevState} → ${targetState} (desktop manual)`, 'desktop');
+    addLog(
+      'State Agent',
+      `Cognitive event: ${targetState}`,
+      reason,
+      `Transition: ${prevState} → ${targetState}`,
+      'State committed to workspace context',
+      'Confidence: 95%',
+      95
+    );
+
+    // Notify relay and mobile of desktop state change
+    sendMessage('DESKTOP_STATE_CHANGED', {
+      state: targetState,
+      previousState: prevState,
+      source_device: 'desktop',
+      timestamp: Date.now(),
+    });
+
+    // Also broadcast COGNITIVE_STATE_COMMITTED so any connected mobile client updates its display
+    sendMessage('COGNITIVE_STATE_COMMITTED', {
+      state: targetState.toUpperCase(),
+      confidence: 95,
+      reason,
+      device_source: 'apex-desktop-tauri-node',
+      source: 'desktop',
+      timestamp: Date.now(),
+    });
+
+    // Trigger sculptor
+    executeSculptorAction(targetState, sendMessage);
+  }, [cognitiveState, addTimeline, addLog, sendMessage, executeSculptorAction]);
 
   // ── Auto-connect on mount ──────────────────────────────
   useEffect(() => {
@@ -598,6 +644,8 @@ export function AppProvider({ children }: AppProviderProps) {
       isApexEnabled, setIsApexEnabled,
       activeExecution,
       mobileTelemetry,
+      sendMessage,
+      triggerCognitiveState,
       lastDemoSync,
       runDemoSequence, showPhoneOverlay,
     }),
@@ -614,6 +662,7 @@ export function AppProvider({ children }: AppProviderProps) {
       telemetry, interpreted, setActiveApp,
       showDebrief, isApexEnabled,
       activeExecution, mobileTelemetry,
+      sendMessage, triggerCognitiveState,
       lastDemoSync,
       runDemoSequence, showPhoneOverlay,
     ],
